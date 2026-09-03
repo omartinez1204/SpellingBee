@@ -18,7 +18,9 @@ coverage/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
-prisma/dev.db*
+# Prisma 7 resuelve DATABASE_URL="file:./dev.db" relativo a prisma.config.ts
+# (raíz de /backend), no relativo a prisma/schema.prisma como en Prisma <=6.
+/dev.db*
 
 # Logs
 *.log
@@ -28,3 +30,5 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+
+/src/generated/prisma

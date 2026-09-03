@@ -1,0 +1,113 @@
+// Prisma schema — Spelling Bee (backend)
+// Modelo de datos basado literalmente en docs/diseno-tecnico.md §2 (a su vez, ERS §3.4).
+//
+// Nota técnica [decisión de equipo]: los nombres de campo con "ñ" en el diagrama
+// (contraseña_hash, debe_cambiar_contraseña) no son identificadores válidos en el DSL
+// de Prisma. Se usa un nombre de campo ASCII en Prisma (contrasenaHash, etc.) y se
+// mapea con @map/@@map a la columna real en SQLite, también en ASCII (contrasena_hash),
+// por consistencia con el resto de columnas del esquema. Esto no afecta RNF-01: son
+// identificadores internos de base de datos, no texto de interfaz.
+//
+// T-001 (este archivo): solo el esquema inicial de las 6 entidades y su primera
+// migración. NO incluye: seeds (T-002/T-003), ni la lógica de recálculo de
+// Palabra.completa (T-022) — el campo existe, pero su recálculo automático es tarea aparte.
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Usuario {
+  id                    Int      @id @default(autoincrement())
+  nombreUsuario         String   @unique @map("nombre_usuario")
+  contrasenaHash        String   @map("contrasena_hash")
+  rol                   String // "alumno" | "profesor"
+  correoElectronico     String   @map("correo_electronico")
+  debeCambiarContrasena Boolean  @default(false) @map("debe_cambiar_contrasena") // RF-36
+  correoRecuperacion    String?  @map("correo_recuperacion") // solo profesor, RF-02/RF-03
+  fechaRegistro         DateTime @default(now()) @map("fecha_registro")
+
+  perfilAlumno      PerfilAlumno?
+  registrosPractica RegistroPractica[]
+  racha             Racha?
+  palabrasCreadas   Palabra[]
+
+  @@map("usuarios")
+}
+
+model PerfilAlumno {
+  idUsuario       Int    @id @map("id_usuario")
+  nombre          String
+  apellidoPaterno String @map("apellido_paterno")
+  apellidoMaterno String @map("apellido_materno")
+  carrera         String // "Agroalimentos" | "Desarrollo de Software" | "MiPymes"
+  semestre        Int // 1-10
+
+  usuario Usuario @relation(fields: [idUsuario], references: [id])
+
+  @@map("perfiles_alumno")
+}
+
+model Nivel {
+  id     Int    @id @default(autoincrement())
+  nombre String // "Fácil" | "Intermedio" | "Difícil"
+  orden  Int
+
+  palabras Palabra[]
+
+  @@map("niveles")
+}
+
+model Palabra {
+  id                 Int      @id @default(autoincrement())
+  texto              String
+  idNivel            Int      @map("id_nivel")
+  significadoEs      String?  @map("significado_es")
+  oracionEjemplo     String?  @map("oracion_ejemplo")
+  nombreArchivoAudio String?  @map("nombre_archivo_audio") // "<id>.<ext>", generado del id interno (RF-11)
+  completa           Boolean  @default(false) // calculado (RF-08); recálculo automático es T-022, no T-001
+  oculta             Boolean  @default(false) // RF-10, reversible
+  fechaAlta          DateTime @default(now()) @map("fecha_alta")
+  idProfesorAutor    Int      @map("id_profesor_autor")
+
+  nivel             Nivel              @relation(fields: [idNivel], references: [id])
+  profesorAutor     Usuario            @relation(fields: [idProfesorAutor], references: [id])
+  registrosPractica RegistroPractica[]
+
+  @@map("palabras")
+}
+
+model RegistroPractica {
+  id                Int      @id @default(autoincrement())
+  idAlumno          Int      @map("id_alumno")
+  idPalabra         Int      @map("id_palabra")
+  idNivelEnPractica Int      @map("id_nivel_en_practica") // snapshot al guardar (RF-09); no es FK viva, ver notas en diseno-tecnico.md §2
+  tiempoSegundos    Int      @map("tiempo_segundos")
+  oracionAlumno     String   @map("oracion_alumno")
+  deletreoCorrecto  Boolean  @map("deletreo_correcto")
+  fechaHora         DateTime @default(now()) @map("fecha_hora")
+  sincronizado      Boolean  @map("sincronizado") // RF-33
+
+  alumno  Usuario @relation(fields: [idAlumno], references: [id])
+  palabra Palabra @relation(fields: [idPalabra], references: [id])
+
+  @@map("registros_practica")
+}
+
+model Racha {
+  idAlumno            Int      @id @map("id_alumno")
+  diasConsecutivos    Int      @default(0) @map("dias_consecutivos")
+  ultimaFechaPractica DateTime @map("ultima_fecha_practica") // solo fecha calendario LOCAL del alumno (RF-23); sin componente de hora
+
+  alumno Usuario @relation(fields: [idAlumno], references: [id])
+
+  @@map("rachas")
+}
