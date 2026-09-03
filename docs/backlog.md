@@ -8,7 +8,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 
 - [x] **T-000** Inicializar monorepo con `/backend` (NestJS + TypeScript) y `/app` (Flutter). Configurar linter/formatter en ambos y un `README.md` raíz con cómo levantar cada uno.
 - [x] **T-001** Backend: configurar Prisma (o el ORM elegido) apuntando a SQLite en modo WAL (ERS §7). Crear el esquema inicial con las 6 entidades de `diseno-tecnico.md` §2 (Usuario, PerfilAlumno, Nivel, Palabra, RegistroPractica, Racha) y su primera migración.
-- [ ] **T-002** Backend: seed script que inserte los 3 niveles (Fácil/Intermedio/Difícil, RF-05) y las 2 cuentas de profesor (`profesorIngles`, `profesorInglesb`) con contraseña temporal y `debe_cambiar_contraseña = true` (RF-02, RF-36). **No escribir las contraseñas reales en el repo** — usar variables de entorno o generarlas aleatoriamente en el seed y mostrarlas una sola vez en consola.
+- [x] **T-002** Backend: seed script que inserte los 3 niveles (Fácil/Intermedio/Difícil, RF-05) y las 2 cuentas de profesor (`profesorIngles`, `profesorInglesb`) con contraseña temporal y `debe_cambiar_contraseña = true` (RF-02, RF-36). **No escribir las contraseñas reales en el repo** — usar variables de entorno o generarlas aleatoriamente en el seed y mostrarlas una sola vez en consola.
 - [ ] **T-003** Backend: cargar el catálogo de 45 palabras del Anexo B del ERS (texto + nivel) vía seed o migración de datos. Significado/oración/audio quedan pendientes (bloqueado — ver "Bloqueadores" al final).
 
 ## Fase 1 — Autenticación (RF-01 a RF-04, RF-35 a RF-37)
