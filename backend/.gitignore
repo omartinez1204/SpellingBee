@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Testing / coverage
+coverage/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# SQLite database files (RF: no se versiona la base de datos)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+prisma/dev.db*
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor/OS
+.DS_Store
+.vscode/
+.idea/

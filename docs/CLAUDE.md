@@ -41,9 +41,16 @@ Ver `docs/diseno-tecnico.md` para el detalle completo (entidades, endpoints). Re
 
 ## Comandos
 
-_(Pendiente de completar en cuanto exista el scaffolding real de `/backend` y `/app` — Fase 0 del backlog, tarea T-000. Actualiza esta sección con los comandos reales de test/build/lint apenas se definan, para que las siguientes sesiones de Claude Code no tengan que redescubrirlos.)_
+Todos se ejecutan desde la raíz del monorepo (`cd backend` / `cd app` primero).
 
-- Backend test: `TBD`
-- Backend build: `TBD`
-- App Flutter run: `TBD`
-- App Flutter test: `TBD`
+- Backend dev: `npm run start:dev` (watch)
+- Backend build: `npm run build`
+- Backend lint: `npm run lint` (oxlint)
+- Backend format: `npm run format` (prettier --write)
+- Backend test: `npm run test` (vitest) · `npm run test:e2e`
+- App Flutter run: `flutter run`
+- App Flutter analyze (lint): `flutter analyze`
+- App Flutter format: `dart format .`
+- App Flutter test: `flutter test`
+
+Ver [README.md](../README.md) raíz para el detalle de instalación de dependencias y requisitos previos.

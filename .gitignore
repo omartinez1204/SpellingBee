@@ -1,0 +1,5 @@
+# Editor/OS (a nivel de todo el monorepo; backend/ y app/ tienen sus propios .gitignore)
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
