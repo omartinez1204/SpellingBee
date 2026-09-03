@@ -1,4 +1,7 @@
-// T-002: seed de datos iniciales. NO incluye T-003 (catálogo de palabras).
+// Seed de datos iniciales: T-002 (niveles + cuentas de profesor) y T-003
+// (catálogo de 45 palabras, solo texto + nivel). NO incluye T-002b/futuro:
+// significado, oración de ejemplo y audio de cada palabra siguen bloqueados
+// (ver docs/backlog.md, "Bloqueadores" — T-003).
 import 'dotenv/config';
 import { randomInt } from 'node:crypto';
 import bcrypt from 'bcrypt';
@@ -85,6 +88,102 @@ async function seedCuentaProfesor(nombreUsuario: string) {
   );
 }
 
+// T-003. Anexo B del ERS, transcrito de docs/catalogo-palabras.ods (Hoja1).
+// "requirement" aparece dos veces en Difícil a propósito (ver docs/backlog.md,
+// "Bloqueadores": son dos registros independientes con su propio id, no se
+// deduplican aquí). Significado, oración de ejemplo y audio quedan pendientes
+// (bloqueado) — no se inventan placeholders para esos 3 campos.
+type NombreNivel = 'Fácil' | 'Intermedio' | 'Difícil';
+
+const CATALOGO_PALABRAS: { texto: string; nivel: NombreNivel }[] = [
+  // Fácil (15)
+  { texto: 'business', nivel: 'Fácil' },
+  { texto: 'payment', nivel: 'Fácil' },
+  { texto: 'distance', nivel: 'Fácil' },
+  { texto: 'opposite', nivel: 'Fácil' },
+  { texto: 'collect', nivel: 'Fácil' },
+  { texto: 'laundry', nivel: 'Fácil' },
+  { texto: 'mistake', nivel: 'Fácil' },
+  { texto: 'world', nivel: 'Fácil' },
+  { texto: 'boring', nivel: 'Fácil' },
+  { texto: 'solution', nivel: 'Fácil' },
+  { texto: 'memory', nivel: 'Fácil' },
+  { texto: 'choice', nivel: 'Fácil' },
+  { texto: 'holiday', nivel: 'Fácil' },
+  { texto: 'survey', nivel: 'Fácil' },
+  { texto: 'again', nivel: 'Fácil' },
+  // Intermedio (15)
+  { texto: 'together', nivel: 'Intermedio' },
+  { texto: 'childhood', nivel: 'Intermedio' },
+  { texto: 'microwave', nivel: 'Intermedio' },
+  { texto: 'absolutely', nivel: 'Intermedio' },
+  { texto: 'adventure', nivel: 'Intermedio' },
+  { texto: 'luggage', nivel: 'Intermedio' },
+  { texto: 'experiment', nivel: 'Intermedio' },
+  { texto: 'download', nivel: 'Intermedio' },
+  { texto: 'headache', nivel: 'Intermedio' },
+  { texto: 'measure', nivel: 'Intermedio' },
+  { texto: 'departure', nivel: 'Intermedio' },
+  { texto: 'enough', nivel: 'Intermedio' },
+  { texto: 'language', nivel: 'Intermedio' },
+  { texto: 'delivery', nivel: 'Intermedio' },
+  { texto: 'necessary', nivel: 'Intermedio' },
+  // Difícil (15, incluye "requirement" dos veces — ver comentario arriba)
+  { texto: 'requirement', nivel: 'Difícil' },
+  { texto: 'neighbor', nivel: 'Difícil' },
+  { texto: 'unfortunately', nivel: 'Difícil' },
+  { texto: 'communication', nivel: 'Difícil' },
+  { texto: 'pronunciation', nivel: 'Difícil' },
+  { texto: 'punctuation', nivel: 'Difícil' },
+  { texto: 'apologize', nivel: 'Difícil' },
+  { texto: 'requirement', nivel: 'Difícil' },
+  { texto: 'appointment', nivel: 'Difícil' },
+  { texto: 'marshmallow', nivel: 'Difícil' },
+  { texto: 'inappropriate', nivel: 'Difícil' },
+  { texto: 'environmental', nivel: 'Difícil' },
+  { texto: 'unforgettable', nivel: 'Difícil' },
+  { texto: 'fashionable', nivel: 'Difícil' },
+  { texto: 'responsibility', nivel: 'Difícil' },
+];
+
+async function seedCatalogoPalabras() {
+  const count = await prisma.palabra.count();
+  if (count > 0) {
+    console.log(
+      `catálogo: ya hay ${count} palabras en la base, no se insertan de nuevo.`,
+    );
+    return;
+  }
+
+  const niveles = await prisma.nivel.findMany();
+  const idNivelPorNombre = new Map(niveles.map((n) => [n.nombre, n.id]));
+
+  const autor = await prisma.usuario.findUnique({
+    where: { nombreUsuario: 'profesorIngles' },
+  });
+  if (!autor) {
+    throw new Error(
+      'seedCatalogoPalabras: no existe "profesorIngles" — corre seedCuentaProfesor antes.',
+    );
+  }
+
+  const data = CATALOGO_PALABRAS.map(({ texto, nivel }) => {
+    const idNivel = idNivelPorNombre.get(nivel);
+    if (idNivel === undefined) {
+      throw new Error(`seedCatalogoPalabras: no existe el nivel "${nivel}".`);
+    }
+    // significadoEs, oracionEjemplo y nombreArchivoAudio se omiten a propósito:
+    // deben quedar NULL (T-003, bloqueado), no un placeholder inventado.
+    return { texto, idNivel, idProfesorAutor: autor.id };
+  });
+
+  await prisma.palabra.createMany({ data });
+  console.log(
+    `catálogo: ${data.length} palabras cargadas (15 por nivel, T-003). ` +
+      'significado, oración y audio quedan pendientes (bloqueado).',
+  );
+}
+
 async function main() {
   await prisma.$connect();
   // ERS §7 / docs/diseno-tecnico.md §1: SQLite en modo WAL. Se reafirma aquí
@@ -95,6 +194,7 @@ async function main() {
   for (const nombreUsuario of CUENTAS_PROFESOR) {
     await seedCuentaProfesor(nombreUsuario);
   }
+  await seedCatalogoPalabras();
 }
 
 main()
