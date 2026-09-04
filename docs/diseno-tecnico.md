@@ -53,7 +53,7 @@ erDiagram
         string nombre
         string apellido_paterno
         string apellido_materno
-        string carrera "enum: Agroalimentos | Desarrollo de Software | MiPymes"
+        string carrera "enum: Ingeniería en Agroalimentos | Ingeniería en Desarrollo de Software | Licenciatura en MiPymes"
         int semestre "1-10"
     }
     NIVEL {

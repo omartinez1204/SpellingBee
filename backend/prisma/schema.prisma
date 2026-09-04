@@ -48,7 +48,7 @@ model PerfilAlumno {
   nombre          String
   apellidoPaterno String @map("apellido_paterno")
   apellidoMaterno String @map("apellido_materno")
-  carrera         String // "Agroalimentos" | "Desarrollo de Software" | "MiPymes"
+  carrera         String // "Ingeniería en Agroalimentos" | "Ingeniería en Desarrollo de Software" | "Licenciatura en MiPymes" (RF-01)
   semestre        Int // 1-10
 
   usuario Usuario @relation(fields: [idUsuario], references: [id])

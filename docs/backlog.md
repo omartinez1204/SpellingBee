@@ -13,8 +13,8 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 
 ## Fase 1 — Autenticación (RF-01 a RF-04, RF-35 a RF-37)
 
-- [ ] **T-010** `POST /auth/registro` (RF-01, RF-37): valida los 8 campos obligatorios, unicidad de matrícula, y que `acepto_aviso_privacidad = true`. Hashea la contraseña (bcrypt). *Criterio:* un alumno nuevo solo puede crear cuenta llenando los 8 campos y aceptando el aviso; no puede registrarse dos veces con la misma matrícula.
-- [ ] **T-011** `POST /auth/login` (RF-01, RF-02): valida credenciales para alumno (matrícula) y profesor (username), emite JWT con `rol` y `debe_cambiar_contraseña`.
+- [x] **T-010** `POST /auth/registro` (RF-01, RF-37): valida los 8 campos obligatorios, unicidad de matrícula, y que `acepto_aviso_privacidad = true`. Hashea la contraseña (bcrypt). *Criterio:* un alumno nuevo solo puede crear cuenta llenando los 8 campos y aceptando el aviso; no puede registrarse dos veces con la misma matrícula.
+- [x] **T-011** `POST /auth/login` (RF-01, RF-02): valida credenciales para alumno (matrícula) y profesor (username), emite JWT con `rol` y `debe_cambiar_contraseña`.
 - [ ] **T-012** `POST /auth/logout` (RF-04): endpoint stateless; documentar en el cliente que basta descartar el JWT localmente.
 - [ ] **T-013** `POST /auth/recuperar-password` + `POST /auth/restablecer-password` (RF-03): flujo de correo de restablecimiento, aplica a alumno y a las 2 cuentas de profesor.
 - [ ] **T-014** `PATCH /auth/cambiar-password` (RF-35, RF-36): valida contraseña actual; si la cuenta tenía `debe_cambiar_contraseña = true`, lo pone en `false` tras el cambio exitoso.
