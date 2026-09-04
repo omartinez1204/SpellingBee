@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { MailModule } from '../mail/mail.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret) {
@@ -29,9 +30,9 @@ const JWT_EXPIRES_IN_SEGUNDOS =
     MailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  // Exportado para que un futuro guard (T-015) verifique el mismo token con
-  // la misma configuración, sin duplicar el registro del módulo.
-  exports: [JwtModule],
+  providers: [AuthService, JwtAuthGuard],
+  // Exportados para que otros módulos (T-015 y en adelante) puedan proteger
+  // sus propias rutas con el mismo guard/configuración, sin duplicarlos.
+  exports: [JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}

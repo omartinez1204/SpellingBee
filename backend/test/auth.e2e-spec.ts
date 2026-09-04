@@ -588,3 +588,190 @@ describe('AuthController (e2e) - recuperar-password / restablecer-password', () 
     }
   });
 });
+
+describe('AuthController (e2e) - PATCH /auth/cambiar-password', () => {
+  let app: INestApplication<App>;
+  let prisma: PrismaService;
+
+  const USUARIO = 'TEST-T014-ALUMNO';
+  const PASSWORD_ORIGINAL = 'ClaveOriginal123';
+
+  async function login(nombre_usuario: string, contrasena: string) {
+    const res = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ nombre_usuario, contrasena })
+      .expect(200);
+    return res.body.access_token as string;
+  }
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    configureApp(app);
+    await app.init();
+    prisma = app.get(PrismaService);
+
+    await request(app.getHttpServer())
+      .post('/auth/registro')
+      .send({
+        matricula: USUARIO,
+        nombre: 'Elena',
+        apellido_paterno: 'Reyes',
+        apellido_materno: 'Ibarra',
+        carrera: 'Licenciatura en MiPymes',
+        semestre: 5,
+        correo: 'elena@example.com',
+        contrasena: PASSWORD_ORIGINAL,
+        acepto_aviso_privacidad: true,
+      })
+      .expect(201);
+  });
+
+  afterEach(async () => {
+    await prisma.perfilAlumno.deleteMany({
+      where: { usuario: { nombreUsuario: USUARIO } },
+    });
+    await prisma.usuario.deleteMany({ where: { nombreUsuario: USUARIO } });
+    await app.close();
+  });
+
+  it('rechaza la petición sin Authorization (requiere sesión)', async () => {
+    const res = await request(app.getHttpServer())
+      .patch('/auth/cambiar-password')
+      .send({
+        contrasena_actual: PASSWORD_ORIGINAL,
+        contrasena_nueva: 'ClaveNueva456',
+      })
+      .expect(401);
+
+    expect(res.body.error.code).toBe('SESION_REQUERIDA');
+
+    // El guard debe frenar la petición antes de que el servicio toque nada.
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ nombre_usuario: USUARIO, contrasena: PASSWORD_ORIGINAL })
+      .expect(200);
+  });
+
+  it('rechaza un token inventado o mal formado', async () => {
+    const res = await request(app.getHttpServer())
+      .patch('/auth/cambiar-password')
+      .set('Authorization', 'Bearer esto-no-es-un-jwt-valido')
+      .send({
+        contrasena_actual: PASSWORD_ORIGINAL,
+        contrasena_nueva: 'ClaveNueva456',
+      })
+      .expect(401);
+
+    expect(res.body.error.code).toBe('SESION_REQUERIDA');
+  });
+
+  it('con sesión válida, cambia la contraseña y la vieja deja de funcionar', async () => {
+    const token = await login(USUARIO, PASSWORD_ORIGINAL);
+    const nuevaPassword = 'ClaveNueva456';
+
+    const res = await request(app.getHttpServer())
+      .patch('/auth/cambiar-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        contrasena_actual: PASSWORD_ORIGINAL,
+        contrasena_nueva: nuevaPassword,
+      })
+      .expect(200);
+    expect(typeof res.body.mensaje).toBe('string');
+
+    const loginTrasCambio = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ nombre_usuario: USUARIO, contrasena: nuevaPassword })
+      .expect(200);
+    // Este alumno nunca tuvo debe_cambiar_contrasena=true (no es el caso de
+    // T-014/RF-36): un cambio voluntario no debe encenderlo ni dejarlo raro.
+    expect(loginTrasCambio.body.debe_cambiar_contrasena).toBe(false);
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ nombre_usuario: USUARIO, contrasena: PASSWORD_ORIGINAL })
+      .expect(401);
+  });
+
+  it('rechaza si la contraseña actual no es correcta, y no cambia nada', async () => {
+    const token = await login(USUARIO, PASSWORD_ORIGINAL);
+
+    const res = await request(app.getHttpServer())
+      .patch('/auth/cambiar-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        contrasena_actual: 'esto-esta-mal',
+        contrasena_nueva: 'ClaveNueva456',
+      })
+      .expect(400);
+
+    expect(res.body.error.code).toBe('CONTRASENA_ACTUAL_INCORRECTA');
+
+    // la contraseña original sigue funcionando: no se tocó nada
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ nombre_usuario: USUARIO, contrasena: PASSWORD_ORIGINAL })
+      .expect(200);
+  });
+
+  it('valida la contraseña nueva (mínimo 8 caracteres) igual que en registro', async () => {
+    const token = await login(USUARIO, PASSWORD_ORIGINAL);
+
+    const res = await request(app.getHttpServer())
+      .patch('/auth/cambiar-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ contrasena_actual: PASSWORD_ORIGINAL, contrasena_nueva: 'corta' })
+      .expect(400);
+
+    expect(res.body.error.code).toBe('VALIDACION');
+  });
+
+  it('apaga debe_cambiar_contrasena tras un cambio exitoso (RF-36)', async () => {
+    const usuarioProfesor = 'TEST-T014-PROFESOR';
+    const passwordTemporal = 'ClaveTemporalProfe1';
+    await prisma.usuario.create({
+      data: {
+        nombreUsuario: usuarioProfesor,
+        contrasenaHash: await bcrypt.hash(passwordTemporal, 12),
+        rol: 'profesor',
+        correoElectronico: 'profesor.t014@example.com',
+        correoRecuperacion: 'profesor.t014@example.com',
+        debeCambiarContrasena: true,
+      },
+    });
+
+    try {
+      const loginInicial = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ nombre_usuario: usuarioProfesor, contrasena: passwordTemporal })
+        .expect(200);
+      expect(loginInicial.body.debe_cambiar_contrasena).toBe(true);
+
+      await request(app.getHttpServer())
+        .patch('/auth/cambiar-password')
+        .set('Authorization', `Bearer ${loginInicial.body.access_token}`)
+        .send({
+          contrasena_actual: passwordTemporal,
+          contrasena_nueva: 'ClaveDefinitivaProfe2',
+        })
+        .expect(200);
+
+      const loginFinal = await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({
+          nombre_usuario: usuarioProfesor,
+          contrasena: 'ClaveDefinitivaProfe2',
+        })
+        .expect(200);
+      expect(loginFinal.body.debe_cambiar_contrasena).toBe(false);
+    } finally {
+      await prisma.usuario.deleteMany({
+        where: { nombreUsuario: usuarioProfesor },
+      });
+    }
+  });
+});

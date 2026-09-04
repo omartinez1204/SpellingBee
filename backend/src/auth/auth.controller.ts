@@ -1,9 +1,20 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service.js';
+import { CurrentUser } from './decorators/current-user.decorator.js';
+import { CambiarPasswordDto } from './dto/cambiar-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RecuperarPasswordDto } from './dto/recuperar-password.dto.js';
 import { RegistroAlumnoDto } from './dto/registro-alumno.dto.js';
 import { RestablecerPasswordDto } from './dto/restablecer-password.dto.js';
+import { JwtAuthGuard, type JwtPayload } from './guards/jwt-auth.guard.js';
 
 @Controller('auth')
 export class AuthController {
@@ -41,5 +52,17 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   restablecerPassword(@Body() dto: RestablecerPasswordDto) {
     return this.authService.restablecerPassword(dto);
+  }
+
+  // PATCH /auth/cambiar-password (RF-35, RF-36). Requiere sesión — el guard
+  // de roles (T-015) es aparte; este solo exige un JWT válido, sin importar el rol.
+  @Patch('cambiar-password')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  cambiarPassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CambiarPasswordDto,
+  ) {
+    return this.authService.cambiarPassword(user.sub, dto);
   }
 }

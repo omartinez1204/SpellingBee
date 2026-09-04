@@ -9,6 +9,7 @@ import {
   type MailService,
 } from '../mail/mail.service.interface.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { CambiarPasswordDto } from './dto/cambiar-password.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RecuperarPasswordDto } from './dto/recuperar-password.dto.js';
 import type { RegistroAlumnoDto } from './dto/registro-alumno.dto.js';
@@ -54,6 +55,16 @@ function errorTokenInvalido(): DominioException {
   return new DominioException(
     'TOKEN_RESTABLECIMIENTO_INVALIDO',
     'El enlace de restablecimiento no es válido o ya expiró.',
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
+function errorContrasenaActualIncorrecta(): DominioException {
+  // Aquí sí se puede ser específico (a diferencia de login/recuperar): la
+  // identidad ya está probada por el JWT, no hay nada que enumerar.
+  return new DominioException(
+    'CONTRASENA_ACTUAL_INCORRECTA',
+    'La contraseña actual no es correcta.',
     HttpStatus.BAD_REQUEST,
   );
 }
@@ -224,5 +235,35 @@ export class AuthService {
     });
 
     return { mensaje: 'Contraseña restablecida correctamente.' };
+  }
+
+  async cambiarPassword(idUsuario: number, dto: CambiarPasswordDto) {
+    // idUsuario viene del JWT (JwtAuthGuard + @CurrentUser), nunca del body:
+    // un usuario con sesión solo puede cambiar SU PROPIA contraseña.
+    const usuario = await this.prisma.usuario.findUniqueOrThrow({
+      where: { id: idUsuario },
+    });
+
+    const actualCoincide = await bcrypt.compare(
+      dto.contrasena_actual,
+      usuario.contrasenaHash,
+    );
+    if (!actualCoincide) {
+      throw errorContrasenaActualIncorrecta();
+    }
+
+    const contrasenaHash = await bcrypt.hash(dto.contrasena_nueva, BCRYPT_COST);
+
+    await this.prisma.usuario.update({
+      where: { id: idUsuario },
+      data: {
+        contrasenaHash,
+        // RF-36: si la cuenta tenía que cambiar su contraseña asignada, este
+        // cambio exitoso ya cumplió esa obligación.
+        debeCambiarContrasena: false,
+      },
+    });
+
+    return { mensaje: 'Contraseña actualizada correctamente.' };
   }
 }
