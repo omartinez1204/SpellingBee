@@ -35,6 +35,13 @@ model Usuario {
   correoRecuperacion    String?  @map("correo_recuperacion") // solo profesor, RF-02/RF-03
   fechaRegistro         DateTime @default(now()) @map("fecha_registro")
 
+  // RF-03 (T-013): token de un solo uso para /auth/restablecer-password.
+  // Se guarda el hash (sha256), nunca el token en claro; una nueva solicitud
+  // sobreescribe la anterior (no hay tabla de historial de tokens: el ERS no
+  // pide auditar esto, solo permitir restablecer la contraseña).
+  tokenRestablecimiento       String?   @map("token_restablecimiento")
+  tokenRestablecimientoExpira DateTime? @map("token_restablecimiento_expira")
+
   perfilAlumno      PerfilAlumno?
   registrosPractica RegistroPractica[]
   racha             Racha?

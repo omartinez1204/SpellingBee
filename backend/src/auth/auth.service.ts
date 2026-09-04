@@ -1,13 +1,30 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { createHash, randomBytes } from 'node:crypto';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import bcrypt from 'bcrypt';
 import { DominioException } from '../common/exceptions/dominio.exception.js';
 import { Prisma } from '../generated/prisma/client.js';
+import {
+  MAIL_SERVICE,
+  type MailService,
+} from '../mail/mail.service.interface.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { LoginDto } from './dto/login.dto.js';
+import type { RecuperarPasswordDto } from './dto/recuperar-password.dto.js';
 import type { RegistroAlumnoDto } from './dto/registro-alumno.dto.js';
+import type { RestablecerPasswordDto } from './dto/restablecer-password.dto.js';
 
 const BCRYPT_COST = 12;
+
+// El ERS no fija una duración para el token de restablecimiento (RF-03);
+// 30 min es un default corto [decisión de equipo], no un requisito del cliente.
+const TOKEN_RESTABLECIMIENTO_TTL_MIN = 30;
+
+function hashToken(tokenEnClaro: string): string {
+  // sha256 (no bcrypt): el token ya es aleatorio de alta entropía, no un
+  // secreto elegido por una persona — no necesita un hash lento.
+  return createHash('sha256').update(tokenEnClaro).digest('hex');
+}
 
 // Hash "señuelo": si el usuario no existe, igual corremos un bcrypt.compare
 // contra esto en vez de responder de inmediato. Sin esto, un login a un
@@ -33,11 +50,20 @@ function errorCredencialesInvalidas(): DominioException {
   );
 }
 
+function errorTokenInvalido(): DominioException {
+  return new DominioException(
+    'TOKEN_RESTABLECIMIENTO_INVALIDO',
+    'El enlace de restablecimiento no es válido o ya expiró.',
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
 @Injectable()
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    @Inject(MAIL_SERVICE) private readonly mailService: MailService,
   ) {}
 
   async registrarAlumno(dto: RegistroAlumnoDto) {
@@ -114,5 +140,89 @@ export class AuthService {
       rol: usuario.rol,
       debe_cambiar_contrasena: usuario.debeCambiarContrasena,
     };
+  }
+
+  logout() {
+    // RF-04: sesión stateless con JWT (diseno-tecnico.md §1) — esta versión
+    // no lleva lista de tokens invalidados, así que no hay nada que borrar ni
+    // marcar del lado del servidor. "Cerrar sesión" es que el cliente
+    // descarte el JWT que tiene guardado; este endpoint solo le da a RF-04
+    // una ruta real que llamar (y un lugar fijo si algún día sí hace falta
+    // invalidar tokens del lado del servidor).
+    return { mensaje: 'Sesión cerrada. El cliente debe descartar el JWT.' };
+  }
+
+  async recuperarPassword(dto: RecuperarPasswordDto) {
+    const usuario = await this.prisma.usuario.findUnique({
+      where: { nombreUsuario: dto.nombre_usuario },
+    });
+
+    // Mismo mensaje exista o no la cuenta (igual que login, RF-01/RF-02):
+    // este endpoint no debe servir para averiguar qué matrículas/usernames
+    // son válidos. Solo si el usuario existe de verdad se genera un token y
+    // se manda el correo; si no, no se hace nada más.
+    if (usuario) {
+      const tokenEnClaro = randomBytes(32).toString('hex');
+      const expira = new Date(
+        Date.now() + TOKEN_RESTABLECIMIENTO_TTL_MIN * 60 * 1000,
+      );
+
+      await this.prisma.usuario.update({
+        where: { id: usuario.id },
+        data: {
+          tokenRestablecimiento: hashToken(tokenEnClaro),
+          tokenRestablecimientoExpira: expira,
+        },
+      });
+
+      // Destino RF-03: el correo de recuperación si existe (siempre el caso
+      // en profesor, RF-02), o el correo de la cuenta si no (siempre el caso
+      // en alumno, RF-01 — ahí no hay un correo de recuperación aparte).
+      const destinatario =
+        usuario.correoRecuperacion ?? usuario.correoElectronico;
+      await this.mailService.enviarCorreoRestablecimiento(
+        destinatario,
+        usuario.nombreUsuario,
+        tokenEnClaro,
+      );
+    }
+
+    return {
+      mensaje:
+        'Si existe una cuenta con ese nombre de usuario, se envió un correo con instrucciones para restablecer la contraseña.',
+    };
+  }
+
+  async restablecerPassword(dto: RestablecerPasswordDto) {
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { tokenRestablecimiento: hashToken(dto.token) },
+    });
+
+    if (
+      !usuario ||
+      !usuario.tokenRestablecimientoExpira ||
+      usuario.tokenRestablecimientoExpira < new Date()
+    ) {
+      throw errorTokenInvalido();
+    }
+
+    const contrasenaHash = await bcrypt.hash(dto.contrasena_nueva, BCRYPT_COST);
+
+    await this.prisma.usuario.update({
+      where: { id: usuario.id },
+      data: {
+        contrasenaHash,
+        // Un solo uso: se limpia aunque el reset haya sido exitoso, para que
+        // el mismo enlace no sirva dos veces (RF-03).
+        tokenRestablecimiento: null,
+        tokenRestablecimientoExpira: null,
+        // Restablecer la contraseña por este camino satisface la misma
+        // obligación que /auth/cambiar-password (T-014, RF-36): ya no debe
+        // forzarse un cambio si la persona acaba de fijar una nueva.
+        debeCambiarContrasena: false,
+      },
+    });
+
+    return { mensaje: 'Contraseña restablecida correctamente.' };
   }
 }
