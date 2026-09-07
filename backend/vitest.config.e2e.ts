@@ -11,5 +11,13 @@ export default defineConfig({
     // AppModule tarde o temprano, así que .env se carga una vez aquí en vez
     // de que cada archivo de test tenga que acordarse de hacerlo.
     setupFiles: ['./test/setup-env.ts'],
+    // Todos los e2e-spec comparten la MISMA dev.db real (no hay una base
+    // aislada por archivo). Con paralelismo de archivos, dos specs pueden
+    // solaparse en el tiempo y una fila temporal de uno (p. ej. T-022
+    // creando una palabra completa en el nivel "Fácil") queda visible un
+    // instante para una aserción de igualdad exacta de otro (p. ej. T-021
+    // listando ese mismo nivel) — encontrado empíricamente al agregar las
+    // pruebas de T-022. Correr los archivos en serie lo evita de raíz.
+    fileParallelism: false,
   },
 });

@@ -92,40 +92,50 @@ describe('NivelesController (e2e)', () => {
       const intermedio = await nivelPorNombre('Intermedio');
       const idProfesor = await idProfesorAutor();
 
+      // completa ya no se puede fijar a mano (T-022: un trigger la
+      // recalcula en cada create/update a partir de estos 3 campos) — para
+      // que una palabra de prueba quede completa=true hay que darle
+      // contenido real, no solo poner `completa: true` en el fixture.
+      const contenidoCompleto = {
+        significadoEs: 'significado de prueba',
+        oracionEjemplo: 'An example sentence.',
+        nombreArchivoAudio: 'x.mp3',
+      };
+
       const visible = await prisma.palabra.create({
         data: {
           texto: `${PREFIJO_PRUEBA}completa-visible`,
           idNivel: facil.id,
-          completa: true,
           oculta: false,
           idProfesorAutor: idProfesor,
+          ...contenidoCompleto,
         },
       });
       await prisma.palabra.create({
         data: {
           texto: `${PREFIJO_PRUEBA}completa-oculta`,
           idNivel: facil.id,
-          completa: true,
           oculta: true,
           idProfesorAutor: idProfesor,
+          ...contenidoCompleto,
         },
       });
       await prisma.palabra.create({
         data: {
           texto: `${PREFIJO_PRUEBA}incompleta-visible`,
           idNivel: facil.id,
-          completa: false,
           oculta: false,
           idProfesorAutor: idProfesor,
+          // sin contenido: debe quedar completa=false por el trigger.
         },
       });
       await prisma.palabra.create({
         data: {
           texto: `${PREFIJO_PRUEBA}completa-visible-otro-nivel`,
           idNivel: intermedio.id,
-          completa: true,
           oculta: false,
           idProfesorAutor: idProfesor,
+          ...contenidoCompleto,
         },
       });
 

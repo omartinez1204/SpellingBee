@@ -80,7 +80,16 @@ model Palabra {
   significadoEs      String?  @map("significado_es")
   oracionEjemplo     String?  @map("oracion_ejemplo")
   nombreArchivoAudio String?  @map("nombre_archivo_audio") // "<id>.<ext>", generado del id interno (RF-11)
-  completa           Boolean  @default(false) // calculado (RF-08); recálculo automático es T-022, no T-001
+  // Calculado (RF-08): true solo si los 3 campos de arriba están definidos y
+  // no son cadena vacía/solo espacios. Mantenido automáticamente por 2
+  // triggers de SQLite (T-022, ver migración 20260907165541) en cada INSERT
+  // o UPDATE de esta tabla — no hay que fijarlo a mano en ningún create/update.
+  // OJO al usar el valor de retorno de un create()/update() de Prisma: por
+  // cómo SQLite resuelve RETURNING junto con triggers AFTER, ese valor puede
+  // reflejar el estado ANTES del recálculo del propio trigger. Si se necesita
+  // el valor fresco en la misma respuesta, hay que releer la fila
+  // (findUnique) después de escribir, no confiar en lo que regresó la mutación.
+  completa           Boolean  @default(false)
   oculta             Boolean  @default(false) // RF-10, reversible
   fechaAlta          DateTime @default(now()) @map("fecha_alta")
   idProfesorAutor    Int      @map("id_profesor_autor")
