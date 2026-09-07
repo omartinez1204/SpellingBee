@@ -24,7 +24,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 ## Fase 2 — Catálogo (RF-05 a RF-11, RF-39)
 
 - [x] **T-020** `GET /niveles` (RF-05).
-- [ ] **T-021** `GET /niveles/:id/palabras` (RF-06): filtra `completa=true AND oculta=false`. *Criterio:* una palabra incompleta o oculta nunca aparece aquí.
+- [x] **T-021** `GET /niveles/:id/palabras` (RF-06): filtra `completa=true AND oculta=false`. *Criterio:* una palabra incompleta o oculta nunca aparece aquí.
 - [ ] **T-022** Lógica de `Palabra.completa` como campo calculado (recalcular en cada create/update, ver `diseno-tecnico.md` §2).
 - [ ] **T-023** `GET /palabras/:id` (RF-07): regresa los 4 campos siempre; la app decide qué ocultar tras pistas.
 - [ ] **T-024** `GET/POST/PATCH /admin/palabras*` y `PATCH /admin/palabras/:id/ocultar` (RF-08, RF-09, RF-10, RF-39), protegidos por rol profesor. *Criterio de RF-10:* ocultar/desocultar es inmediato y reversible, no borra nada ni afecta registros de práctica ya generados.
