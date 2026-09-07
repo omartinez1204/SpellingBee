@@ -6,7 +6,12 @@ plugins {
 
 android {
     namespace = "com.novauniversitas.spellingbee.spelling_bee"
-    compileSdk = flutter.compileSdkVersion
+    // Fijo en 36, no flutter.compileSdkVersion (que en este Flutter apunta a
+    // 37): el repositorio de Android SDK todavía no publica un paquete
+    // "platforms;android-37" sin sufijo de extensión (solo existen
+    // android-37.0/37.1/37.2-betaN), así que Gradle no puede resolverlo.
+    // Quitar este pin cuando exista un "platforms;android-37" instalable.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

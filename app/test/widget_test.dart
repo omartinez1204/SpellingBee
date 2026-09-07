@@ -1,30 +1,52 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:spelling_bee/core/auth_controller.dart';
 import 'package:spelling_bee/main.dart';
+import 'package:spelling_bee/screens/registro_screen.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('sin sesión guardada, la app abre en la pantalla de login', (
+    WidgetTester tester,
+  ) async {
+    // No se llama cargarSesionGuardada(): no hay sesión que cargar, así que
+    // el AuthController se queda tal como arranca (sin sesión), sin tocar
+    // flutter_secure_storage (no disponible en el entorno de test).
+    final authController = AuthController();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(SpellingBeeApp(authController: authController));
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(find.text('Iniciar sesión'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, 'Entrar'), findsOneWidget);
+    expect(find.text('¿Olvidaste tu contraseña?'), findsOneWidget);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets(
+    'el formulario de login rechaza campos vacíos sin llamar a la red',
+    (WidgetTester tester) async {
+      final authController = AuthController();
+      await tester.pumpWidget(SpellingBeeApp(authController: authController));
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Entrar'));
+      await tester.pump();
+
+      expect(find.text('Escribe tu matrícula o usuario.'), findsOneWidget);
+      expect(find.text('Escribe tu contraseña.'), findsOneWidget);
+    },
+  );
+
+  testWidgets('desde login se puede navegar a la pantalla de registro', (
+    WidgetTester tester,
+  ) async {
+    final authController = AuthController();
+    await tester.pumpWidget(SpellingBeeApp(authController: authController));
+
+    await tester.tap(find.text('¿Eres alumno nuevo? Crea tu cuenta'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RegistroScreen), findsOneWidget);
+    // RF-37 / T-074: el aviso de privacidad debe verse en el registro, y
+    // marcado con claridad como borrador.
+    expect(find.textContaining('BORRADOR'), findsOneWidget);
   });
 }
