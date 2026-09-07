@@ -4,10 +4,11 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
+import { NivelesModule } from './niveles/niveles.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, NivelesModule],
   controllers: [AppController],
   providers: [
     AppService,
