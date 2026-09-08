@@ -1,5 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { DominioException } from '../common/exceptions/dominio.exception.js';
+import { parsearIdDeRuta } from '../common/parsear-id-de-ruta.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 function errorNivelIdInvalido(): DominioException {
@@ -38,8 +39,8 @@ export class NivelesService {
   // aún, T-003 bloqueado) puede aparecer aquí todavía. Una lista vacía en
   // este momento es el resultado correcto, no un error.
   async listarPalabras(idNivelParam: string) {
-    const idNivel = Number(idNivelParam);
-    if (!Number.isInteger(idNivel) || idNivel <= 0) {
+    const idNivel = parsearIdDeRuta(idNivelParam);
+    if (idNivel === null) {
       throw errorNivelIdInvalido();
     }
 

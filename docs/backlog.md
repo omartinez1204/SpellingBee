@@ -26,7 +26,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 - [x] **T-020** `GET /niveles` (RF-05).
 - [x] **T-021** `GET /niveles/:id/palabras` (RF-06): filtra `completa=true AND oculta=false`. *Criterio:* una palabra incompleta o oculta nunca aparece aquí.
 - [x] **T-022** Lógica de `Palabra.completa` como campo calculado (recalcular en cada create/update, ver `diseno-tecnico.md` §2).
-- [ ] **T-023** `GET /palabras/:id` (RF-07): regresa los 4 campos siempre; la app decide qué ocultar tras pistas.
+- [x] **T-023** `GET /palabras/:id` (RF-07): regresa los 4 campos siempre; la app decide qué ocultar tras pistas.
 - [ ] **T-024** `GET/POST/PATCH /admin/palabras*` y `PATCH /admin/palabras/:id/ocultar` (RF-08, RF-09, RF-10, RF-39), protegidos por rol profesor. *Criterio de RF-10:* ocultar/desocultar es inmediato y reversible, no borra nada ni afecta registros de práctica ya generados.
 - [ ] **T-025** `POST /admin/palabras/:id/audio` (RF-11): valida formato (mp3/aac/m4a) y tamaño (≤1 MB), guarda como `<id>.<ext>` en `assets/audios/`. *Criterio:* un archivo inválido se rechaza con mensaje claro; editar el texto de la palabra nunca desvincula su audio.
 - [ ] **T-026** Flutter: pantalla de práctica del alumno mostrando solo palabra + ícono de audio, con botones "Ver significado" / "Ver ejemplo" (RF-07 — diseño marcado como propuesta del equipo en el ERS, revisar con el cliente si el copy/UX definitivo cambia).

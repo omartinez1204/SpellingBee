@@ -174,6 +174,23 @@ describe('NivelesController (e2e)', () => {
       });
     });
 
+    // Mismo bug encontrado y corregido al verificar T-023 (ver
+    // src/common/parsear-id-de-ruta.util.ts): Number.isInteger(1e21) es
+    // true, así que sin el límite superior este id absurdamente grande
+    // pasaba la validación y tronaba en Prisma con un 500 genérico.
+    it('400 (no 500) si el id es un número demasiado grande para un entero de 64 bits', async () => {
+      const respuesta = await request(app.getHttpServer())
+        .get('/niveles/999999999999999999999/palabras')
+        .expect(400);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'NIVEL_ID_INVALIDO',
+          message: 'El id de nivel debe ser un número entero positivo.',
+        },
+      });
+    });
+
     it('no requiere sesión iniciada', async () => {
       const facil = await nivelPorNombre('Fácil');
       await request(app.getHttpServer())
