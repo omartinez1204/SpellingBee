@@ -3,7 +3,7 @@ import { DominioException } from '../common/exceptions/dominio.exception.js';
 import { parsearIdDeRuta } from '../common/parsear-id-de-ruta.util.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
-function errorPalabraIdInvalido(): DominioException {
+export function errorPalabraIdInvalido(): DominioException {
   return new DominioException(
     'PALABRA_ID_INVALIDO',
     'El id de palabra debe ser un número entero positivo.',
@@ -11,7 +11,7 @@ function errorPalabraIdInvalido(): DominioException {
   );
 }
 
-function errorPalabraNoEncontrada(): DominioException {
+export function errorPalabraNoEncontrada(): DominioException {
   return new DominioException(
     'PALABRA_NO_ENCONTRADA',
     'No existe una palabra con ese id.',
@@ -29,7 +29,7 @@ function errorPalabraNoEncontrada(): DominioException {
 // app/lib/core/api_client.dart), y el backend no puede saber con qué
 // host/puerto lo alcanza cada cliente (emulador, dispositivo físico o
 // producción tienen valores distintos).
-function urlAudio(nombreArchivoAudio: string | null): string | null {
+export function urlAudio(nombreArchivoAudio: string | null): string | null {
   return nombreArchivoAudio ? `/assets/audios/${nombreArchivoAudio}` : null;
 }
 

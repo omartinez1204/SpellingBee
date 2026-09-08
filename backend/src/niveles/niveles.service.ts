@@ -11,7 +11,7 @@ function errorNivelIdInvalido(): DominioException {
   );
 }
 
-function errorNivelNoEncontrado(): DominioException {
+export function errorNivelNoEncontrado(): DominioException {
   return new DominioException(
     'NIVEL_NO_ENCONTRADO',
     'No existe un nivel con ese id.',
