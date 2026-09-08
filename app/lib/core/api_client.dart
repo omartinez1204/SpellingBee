@@ -25,6 +25,10 @@ class ApiClient {
   final http.Client _http;
   final String baseUrl;
 
+  Future<Map<String, dynamic>> get(String path, {String? token}) {
+    return _enviar(() => _http.get(_uri(path), headers: _headers(token)));
+  }
+
   Future<Map<String, dynamic>> post(
     String path,
     Map<String, dynamic> body, {
