@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth_controller.dart';
+import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
 
-/// Placeholder: el catálogo/práctica real es de la Fase 2 (T-020 en
-/// adelante), todavía sin backend que consumir. Esta pantalla solo prueba que
-/// login/logout/cambio voluntario de contraseña (T-011, T-012, T-014) ya
-/// funcionan de punta a punta desde la app.
+/// Placeholder: el catálogo/práctica del alumno todavía no tiene pantalla
+/// propia en el backlog (T-026 es solo la práctica de una palabra ya
+/// elegida). Para el profesor, el botón de abajo sí es la pantalla real de
+/// T-027 — es la única entrada a ella, y solo aparece con sesión de profesor.
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, required this.authController});
 
@@ -35,6 +36,18 @@ class HomeScreen extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
+              if (sesion.esProfesor) ...[
+                FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          AdminCatalogoScreen(authController: authController),
+                    ),
+                  ),
+                  child: const Text('Administrar catálogo'),
+                ),
+                const SizedBox(height: 12),
+              ],
               OutlinedButton(
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(

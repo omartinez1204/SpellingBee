@@ -25,48 +25,96 @@ class ApiClient {
   final http.Client _http;
   final String baseUrl;
 
-  Future<Map<String, dynamic>> get(String path, {String? token}) {
-    return _enviar(() => _http.get(_uri(path), headers: _headers(token)));
+  Future<Map<String, dynamic>> get(String path, {String? token}) async {
+    final cuerpo = await _enviar(
+      () => _http.get(_uri(path), headers: _headers(token)),
+    );
+    return cuerpo as Map<String, dynamic>;
+  }
+
+  /// Igual que get(), pero para endpoints cuya raíz JSON es un arreglo
+  /// (p. ej. GET /niveles: "[{...}, {...}]", no "{"niveles": [...]}") — un
+  /// solo "get()" que siempre castea a Map no sirve para esa forma.
+  Future<List<dynamic>> getLista(String path, {String? token}) async {
+    final cuerpo = await _enviar(
+      () => _http.get(_uri(path), headers: _headers(token)),
+    );
+    return cuerpo as List<dynamic>;
   }
 
   Future<Map<String, dynamic>> post(
     String path,
     Map<String, dynamic> body, {
     String? token,
-  }) {
-    return _enviar(
+  }) async {
+    final cuerpo = await _enviar(
       () => _http.post(
         _uri(path),
         headers: _headers(token),
         body: jsonEncode(body),
       ),
     );
+    return cuerpo as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> patch(
     String path,
     Map<String, dynamic> body, {
     String? token,
-  }) {
-    return _enviar(
+  }) async {
+    final cuerpo = await _enviar(
       () => _http.patch(
         _uri(path),
         headers: _headers(token),
         body: jsonEncode(body),
       ),
     );
+    return cuerpo as Map<String, dynamic>;
+  }
+
+  /// Subida multipart (T-025: POST /admin/palabras/:id/audio). Sin
+  /// Content-Type manual: MultipartRequest arma el suyo propio con el
+  /// boundary correcto — ponerlo a mano rompería el parseo del backend.
+  Future<Map<String, dynamic>> subirArchivo(
+    String path,
+    String campoFormulario,
+    List<int> bytes,
+    String nombreArchivo, {
+    String? token,
+  }) async {
+    final cuerpo = await _enviar(() async {
+      final solicitud = http.MultipartRequest('POST', _uri(path))
+        ..headers.addAll(_headersAuth(token))
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            campoFormulario,
+            bytes,
+            filename: nombreArchivo,
+          ),
+        );
+      final respuestaEnFlujo = await _http.send(solicitud);
+      return http.Response.fromStream(respuestaEnFlujo);
+    });
+    return cuerpo as Map<String, dynamic>;
   }
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');
 
   Map<String, String> _headers(String? token) => {
     'Content-Type': 'application/json',
+    ..._headersAuth(token),
+  };
+
+  Map<String, String> _headersAuth(String? token) => {
     if (token != null) 'Authorization': 'Bearer $token',
   };
 
-  Future<Map<String, dynamic>> _enviar(
-    Future<http.Response> Function() hacer,
-  ) async {
+  /// Decodifica la respuesta y resuelve al cuerpo ya listo para usarse: el
+  /// tipo real (Map para la mayoría de endpoints, List para los que
+  /// regresan un arreglo en la raíz) lo decide quien llama, vía el cast en
+  /// get()/getLista()/post()/etc. — este método solo sabe manejar red y el
+  /// contrato uniforme de error, no la forma de cada endpoint.
+  Future<dynamic> _enviar(Future<http.Response> Function() hacer) async {
     http.Response respuesta;
     try {
       respuesta = await hacer().timeout(const Duration(seconds: 10));
@@ -82,11 +130,11 @@ class ApiClient {
       );
     }
 
-    final Map<String, dynamic> cuerpo;
+    final dynamic cuerpo;
     try {
       cuerpo = respuesta.body.isEmpty
           ? <String, dynamic>{}
-          : jsonDecode(respuesta.body) as Map<String, dynamic>;
+          : jsonDecode(respuesta.body);
     } on FormatException {
       throw const ApiException(
         'RESPUESTA_INVALIDA',
@@ -98,7 +146,10 @@ class ApiClient {
       return cuerpo;
     }
 
-    final error = cuerpo['error'] as Map<String, dynamic>?;
+    // Los errores siempre son { "error": { "code", "message" } } (un mapa),
+    // sin importar si el endpoint exitoso regresa un mapa o una lista.
+    final mapaError = cuerpo is Map<String, dynamic> ? cuerpo : null;
+    final error = mapaError?['error'] as Map<String, dynamic>?;
     throw ApiException(
       (error?['code'] as String?) ?? 'ERROR',
       (error?['message'] as String?) ?? 'Ocurrió un error inesperado.',

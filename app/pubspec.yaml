@@ -36,6 +36,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   http: ^1.6.0
   flutter_secure_storage: 10.3.1
+  # Pineado a una versión exacta (mismo criterio que flutter_secure_storage
+  # arriba): pub resuelve un 12.x más nuevo por default, pero no se probó
+  # contra el compileSdk=36 fijado en android/app/build.gradle.kts (ver
+  # comentario ahí — Android 37 todavía no publica el paquete de plataforma
+  # base en el repositorio del SDK).
+  file_picker: 10.3.10
 
 dev_dependencies:
   flutter_test:
