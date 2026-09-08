@@ -1,3 +1,5 @@
+import { readdir, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import bcrypt from 'bcrypt';
@@ -6,6 +8,8 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.config.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
+
+const CARPETA_AUDIOS = join(process.cwd(), 'assets', 'audios');
 
 const PREFIJO_PRUEBA = 'TEST-T024-';
 const PASSWORD = 'ClaveDePrueba123';
@@ -106,6 +110,23 @@ describe('AdminPalabrasController (e2e) - /admin/palabras', () => {
     await prisma.registroPractica.deleteMany({
       where: { palabra: { texto: { startsWith: PREFIJO_PRUEBA } } },
     });
+
+    // Los audios de T-025 quedan en disco real (no mockeado) — hay que
+    // borrarlos antes de borrar las filas, si no, quedan huérfanos en
+    // assets/audios/ entre corridas de la suite.
+    const palabrasConAudio = await prisma.palabra.findMany({
+      where: {
+        texto: { startsWith: PREFIJO_PRUEBA },
+        nombreArchivoAudio: { not: null },
+      },
+      select: { nombreArchivoAudio: true },
+    });
+    await Promise.all(
+      palabrasConAudio.map((p) =>
+        unlink(join(CARPETA_AUDIOS, p.nombreArchivoAudio!)).catch(() => {}),
+      ),
+    );
+
     await prisma.palabra.deleteMany({
       where: { texto: { startsWith: PREFIJO_PRUEBA } },
     });
@@ -703,6 +724,225 @@ describe('AdminPalabrasController (e2e) - /admin/palabras', () => {
         .set('Authorization', `Bearer ${tokenProfesorA}`)
         .send({ oculta: 'si' })
         .expect(400);
+    });
+  });
+
+  describe('POST /admin/palabras/:id/audio (RF-11)', () => {
+    async function crearPalabraDePrueba(texto: string) {
+      return prisma.palabra.create({
+        data: { texto: `${PREFIJO_PRUEBA}${texto}`, idNivel, idProfesorAutor: idProfesorA },
+      });
+    }
+
+    it('sin sesión → 401, con alumno → 403', async () => {
+      const palabra = await crearPalabraDePrueba('audio-auth');
+
+      await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .attach('audio', Buffer.alloc(1000), 'prueba.mp3')
+        .expect(401);
+
+      await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenAlumno}`)
+        .attach('audio', Buffer.alloc(1000), 'prueba.mp3')
+        .expect(403);
+    });
+
+    it('un archivo fuera de formato se rechaza con mensaje claro', async () => {
+      const palabra = await crearPalabraDePrueba('formato-invalido');
+
+      const respuesta = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'grabacion.wav')
+        .expect(400);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'AUDIO_FORMATO_INVALIDO',
+          message: 'El archivo debe ser MP3, AAC o M4A.',
+        },
+      });
+
+      const enBd = await prisma.palabra.findUnique({ where: { id: palabra.id } });
+      expect(enBd?.nombreArchivoAudio).toBeNull();
+    });
+
+    it('un archivo que excede 1 MB se rechaza con mensaje claro', async () => {
+      const palabra = await crearPalabraDePrueba('demasiado-grande');
+      const unMegaMasUnByte = 1024 * 1024 + 1;
+
+      const respuesta = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(unMegaMasUnByte), 'grabacion.mp3')
+        .expect(400);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'AUDIO_TAMANO_INVALIDO',
+          message: 'El archivo no puede pesar más de 1 MB.',
+        },
+      });
+
+      const enBd = await prisma.palabra.findUnique({ where: { id: palabra.id } });
+      expect(enBd?.nombreArchivoAudio).toBeNull();
+    });
+
+    it('exactamente 1 MB sí se acepta (el límite es "más de 1 MB", no "1 MB o más")', async () => {
+      const palabra = await crearPalabraDePrueba('exacto-1mb');
+      const unMegaExacto = 1024 * 1024;
+
+      await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(unMegaExacto), 'grabacion.mp3')
+        .expect(201);
+    });
+
+    it('un archivo válido queda disponible para reproducirse en url_audio', async () => {
+      const palabra = await crearPalabraDePrueba('reproducible');
+      const contenido = Buffer.alloc(2000, 'a');
+
+      const subida = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', contenido, 'grabacion.mp3')
+        .expect(201);
+
+      expect(subida.body.url_audio).toBe(`/assets/audios/${palabra.id}.mp3`);
+
+      // No basta con el campo derivado de la respuesta: se confirma la
+      // columna real en la base de datos, directo por Prisma.
+      const enBd = await prisma.palabra.findUniqueOrThrow({
+        where: { id: palabra.id },
+      });
+      expect(enBd.nombreArchivoAudio).toBe(`${palabra.id}.mp3`);
+
+      // "Disponible para reproducirse" de verdad: se descarga por HTTP la
+      // misma url que regresó el endpoint y se compara byte a byte, no solo
+      // que el campo de la base de datos se haya actualizado.
+      const descarga = await request(app.getHttpServer())
+        .get(subida.body.url_audio)
+        .expect(200);
+      expect(Buffer.compare(descarga.body, contenido)).toBe(0);
+    });
+
+    it('acepta también .aac y .m4a, no solo .mp3', async () => {
+      const palabraAac = await crearPalabraDePrueba('formato-aac');
+      const respuestaAac = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabraAac.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'grabacion.aac')
+        .expect(201);
+      expect(respuestaAac.body.url_audio).toBe(`/assets/audios/${palabraAac.id}.aac`);
+
+      const palabraM4a = await crearPalabraDePrueba('formato-m4a');
+      const respuestaM4a = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabraM4a.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'grabacion.m4a')
+        .expect(201);
+      expect(respuestaM4a.body.url_audio).toBe(`/assets/audios/${palabraM4a.id}.m4a`);
+    });
+
+    it('nombra el archivo por el id, nunca por el texto de la palabra', async () => {
+      const palabra = await crearPalabraDePrueba('nombre-por-id');
+
+      const respuesta = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'grabacion.mp3')
+        .expect(201);
+
+      expect(respuesta.body.url_audio).toBe(`/assets/audios/${palabra.id}.mp3`);
+      expect(respuesta.body.url_audio).not.toContain(palabra.texto);
+
+      // Directo en la base de datos, no solo en la respuesta derivada.
+      const enBd = await prisma.palabra.findUniqueOrThrow({
+        where: { id: palabra.id },
+      });
+      expect(enBd.nombreArchivoAudio).toBe(`${palabra.id}.mp3`);
+
+      // Directo en el sistema de archivos real: existe <id>.mp3 y NINGÚN
+      // archivo en la carpeta se llama a partir del texto de la palabra.
+      const archivosEnDisco = await readdir(CARPETA_AUDIOS);
+      expect(archivosEnDisco).toContain(`${palabra.id}.mp3`);
+      expect(
+        archivosEnDisco.some((nombre) => nombre.includes(palabra.texto)),
+      ).toBe(false);
+    });
+
+    it('reemplazar el audio con otra extensión borra el archivo viejo del disco', async () => {
+      const palabra = await crearPalabraDePrueba('reemplazo');
+
+      await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'primero.mp3')
+        .expect(201);
+
+      const segunda = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'segundo.m4a')
+        .expect(201);
+
+      expect(segunda.body.url_audio).toBe(`/assets/audios/${palabra.id}.m4a`);
+
+      // El .mp3 viejo ya no debe existir ni servirse.
+      await request(app.getHttpServer())
+        .get(`/assets/audios/${palabra.id}.mp3`)
+        .expect(404);
+      // El .m4a nuevo sí.
+      await request(app.getHttpServer())
+        .get(`/assets/audios/${palabra.id}.m4a`)
+        .expect(200);
+    });
+
+    it('editar el texto de la palabra después no desvincula su audio', async () => {
+      const palabra = await crearPalabraDePrueba('no-se-desvincula');
+      const subida = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'grabacion.mp3')
+        .expect(201);
+
+      const editada = await request(app.getHttpServer())
+        .patch(`/admin/palabras/${palabra.id}`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .send({ texto: `${PREFIJO_PRUEBA}texto-nuevo-tras-audio` })
+        .expect(200);
+
+      expect(editada.body.url_audio).toBe(subida.body.url_audio);
+      await request(app.getHttpServer()).get(editada.body.url_audio).expect(200);
+    });
+
+    it('404 (no 500) si la palabra no existe', async () => {
+      const respuesta = await request(app.getHttpServer())
+        .post('/admin/palabras/999999/audio')
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .attach('audio', Buffer.alloc(1000), 'grabacion.mp3')
+        .expect(404);
+
+      expect(respuesta.body.error.code).toBe('PALABRA_NO_ENCONTRADA');
+    });
+
+    it('400 con mensaje claro si no se adjunta ningún archivo', async () => {
+      const palabra = await crearPalabraDePrueba('sin-archivo');
+
+      const respuesta = await request(app.getHttpServer())
+        .post(`/admin/palabras/${palabra.id}/audio`)
+        .set('Authorization', `Bearer ${tokenProfesorA}`)
+        .expect(400);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'AUDIO_FALTANTE',
+          message: 'Debes adjuntar un archivo de audio.',
+        },
+      });
     });
   });
 });

@@ -22,6 +22,10 @@ coverage/
 # (raíz de /backend), no relativo a prisma/schema.prisma como en Prisma <=6.
 /dev.db*
 
+# Audios subidos por profesores (RF-11) — contenido de usuario, no código.
+/assets/audios/*
+!/assets/audios/.gitkeep
+
 # Logs
 *.log
 npm-debug.log*

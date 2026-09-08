@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
+import { extname, join } from 'node:path';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { DominioException } from '../common/exceptions/dominio.exception.js';
 import { PaginacionDto } from '../common/dto/paginacion.dto.js';
 import { parsearIdDeRuta } from '../common/parsear-id-de-ruta.util.js';
 import { errorNivelNoEncontrado } from '../niveles/niveles.service.js';
@@ -11,6 +14,43 @@ import {
   errorPalabraNoEncontrada,
   urlAudio,
 } from './palabras.service.js';
+
+// RF-11. Carpeta relativa a la raíz de /backend (mismo criterio que
+// DATABASE_URL="file:./dev.db"): el proceso siempre arranca con cwd=backend/
+// (npm run start/start:dev, y también los tests e2e).
+const CARPETA_AUDIOS = join(process.cwd(), 'assets', 'audios');
+const TAMANO_MAXIMO_AUDIO_BYTES = 1024 * 1024; // 1 MB, literal del ERS.
+// Validación por EXTENSIÓN, no por mimetype: RF-11 expresa el requisito así
+// ("p. ej. 42.mp3") y el mimetype real que reportan distintas apps de
+// grabación para AAC/M4A varía bastante entre plataformas (audio/aac,
+// audio/mp4, audio/x-m4a...), mientras que la extensión es inequívoca. El
+// propio ERS aclara que "el sistema no valida el contenido... solo su
+// formato y tamaño" — no se espera inspección de bytes mágicos.
+const EXTENSIONES_AUDIO_PERMITIDAS = ['.mp3', '.aac', '.m4a'];
+
+function errorAudioFaltante(): DominioException {
+  return new DominioException(
+    'AUDIO_FALTANTE',
+    'Debes adjuntar un archivo de audio.',
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
+function errorAudioFormatoInvalido(): DominioException {
+  return new DominioException(
+    'AUDIO_FORMATO_INVALIDO',
+    'El archivo debe ser MP3, AAC o M4A.',
+    HttpStatus.BAD_REQUEST,
+  );
+}
+
+function errorAudioTamanoInvalido(): DominioException {
+  return new DominioException(
+    'AUDIO_TAMANO_INVALIDO',
+    'El archivo no puede pesar más de 1 MB.',
+    HttpStatus.BAD_REQUEST,
+  );
+}
 
 const SELECT_ADMIN = {
   id: true,
@@ -135,6 +175,54 @@ export class AdminPalabrasService {
     await this.prisma.palabra.update({
       where: { id },
       data: { oculta: dto.oculta },
+    });
+
+    return this.obtenerParaAdmin(id);
+  }
+
+  // RF-11: sube o reemplaza el audio de una palabra. Valida formato y
+  // tamaño ANTES de tocar disco o base de datos; el archivo se guarda
+  // siempre como "<id>.<extensión>" (nunca a partir del texto), así que
+  // editar el texto (RF-09) nunca desvincula el audio — el nombre no
+  // depende de él. Si ya había un audio con OTRA extensión, se borra el
+  // archivo viejo para no dejar basura huérfana en disco.
+  async subirAudio(idParam: string, archivo: Express.Multer.File | undefined) {
+    const id = this.validarId(idParam);
+
+    if (!archivo) {
+      throw errorAudioFaltante();
+    }
+    const extension = extname(archivo.originalname).toLowerCase();
+    if (!EXTENSIONES_AUDIO_PERMITIDAS.includes(extension)) {
+      throw errorAudioFormatoInvalido();
+    }
+    if (archivo.size > TAMANO_MAXIMO_AUDIO_BYTES) {
+      throw errorAudioTamanoInvalido();
+    }
+
+    const existente = await this.prisma.palabra.findUnique({
+      where: { id },
+      select: { nombreArchivoAudio: true },
+    });
+    if (!existente) {
+      throw errorPalabraNoEncontrada();
+    }
+
+    const nombreArchivoNuevo = `${id}${extension}`;
+    await mkdir(CARPETA_AUDIOS, { recursive: true });
+    await writeFile(join(CARPETA_AUDIOS, nombreArchivoNuevo), archivo.buffer);
+
+    const archivoAnterior = existente.nombreArchivoAudio;
+    if (archivoAnterior && archivoAnterior !== nombreArchivoNuevo) {
+      await unlink(join(CARPETA_AUDIOS, archivoAnterior)).catch(() => {
+        // Si el archivo viejo ya no estaba en disco por lo que sea, no es
+        // motivo para fallar la subida del nuevo (que ya se guardó bien).
+      });
+    }
+
+    await this.prisma.palabra.update({
+      where: { id },
+      data: { nombreArchivoAudio: nombreArchivoNuevo },
     });
 
     return this.obtenerParaAdmin(id);

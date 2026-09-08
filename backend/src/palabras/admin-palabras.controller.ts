@@ -8,7 +8,11 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/guards/jwt-auth.guard.js';
 import { PaginacionDto } from '../common/dto/paginacion.dto.js';
@@ -16,6 +20,12 @@ import { AdminPalabrasService } from './admin-palabras.service.js';
 import { CrearPalabraDto } from './dto/crear-palabra.dto.js';
 import { EditarPalabraDto } from './dto/editar-palabra.dto.js';
 import { OcultarPalabraDto } from './dto/ocultar-palabra.dto.js';
+
+// Límite del propio Multer: es solo una red de seguridad contra un cliente
+// abusivo (memoryStorage no debe bufferear archivos enormes); el límite de
+// negocio real de 1 MB (RF-11) lo valida AdminPalabrasService con un mensaje
+// en español, no este límite crudo de multer.
+const LIMITE_MULTER_BYTES = 5 * 1024 * 1024;
 
 // RF-08 a RF-10, RF-39. Protegido por RolesGuard (T-015), registrado GLOBAL
 // vía APP_GUARD en app.module.ts: cualquier ruta bajo /admin/* ya exige rol
@@ -46,5 +56,20 @@ export class AdminPalabrasController {
   @HttpCode(HttpStatus.OK)
   ocultar(@Param('id') id: string, @Body() dto: OcultarPalabraDto) {
     return this.adminPalabrasService.ocultar(id, dto);
+  }
+
+  // RF-11. Campo del multipart: "audio".
+  @Post(':id/audio')
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      storage: memoryStorage(),
+      limits: { fileSize: LIMITE_MULTER_BYTES },
+    }),
+  )
+  subirAudio(
+    @Param('id') id: string,
+    @UploadedFile() archivo: Express.Multer.File | undefined,
+  ) {
+    return this.adminPalabrasService.subirAudio(id, archivo);
   }
 }
