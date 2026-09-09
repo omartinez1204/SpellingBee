@@ -36,7 +36,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 
 - [x] **T-030** Reproducción básica (RF-12), pausa/reanuda (RF-13), detener (RF-16), reproducciones ilimitadas (RF-17).
 - [x] **T-031** Retroceder/adelantar exactamente 5 segundos (RF-14, RF-15), sin pasar de 0 ni de la duración total.
-- [ ] **T-032** Barra de progreso + texto `mm:ss / mm:ss` actualizado al menos 1 vez por segundo (RF-18).
+- [x] **T-032** Barra de progreso + texto `mm:ss / mm:ss` actualizado al menos 1 vez por segundo (RF-18).
 - [ ] **T-033** Caché local del audio descargado para cumplir RNF-03 (reproducción en <2s si ya está disponible localmente).
 
 ## Fase 4 — Cronómetro, deletreo y oración (RF-19 a RF-27, RF-40)

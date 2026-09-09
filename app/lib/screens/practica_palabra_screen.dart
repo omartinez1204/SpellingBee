@@ -4,27 +4,26 @@ import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
 import '../core/detalle_palabra.dart';
+import '../core/formato_tiempo.dart';
 import '../core/palabras_service.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
 
-/// RF-07 (T-026) + RF-12/13/14/15/16/17 (T-030/T-031): pantalla de práctica
+/// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032): pantalla de práctica
 /// de UNA palabra. Muestra de inmediato y de forma visible solo la palabra
 /// en inglés y un ícono de audio; significado y oración de ejemplo quedan
 /// ocultos al inicio, disponibles mediante dos botones de pista que el
 /// alumno activa voluntariamente. El ícono de audio reproduce/pausa/reanuda
-/// (RF-12/13); retroceder/adelantar 5s (RF-14/15) y detener (RF-16)
-/// aparecen mientras hay algo sobre lo que actuar (reproduciendo o
-/// pausada). No hay límite de reproducciones (RF-17): terminar o detener
-/// deja la pista lista para volver a tocarse desde el inicio.
+/// (RF-12/13); retroceder/adelantar 5s (RF-14/15), detener (RF-16) y la
+/// barra de progreso + texto mm:ss (RF-18) aparecen mientras hay algo sobre
+/// lo que actuar (reproduciendo o pausada). No hay límite de reproducciones
+/// (RF-17): terminar o detener deja la pista lista para volver a tocarse
+/// desde el inicio.
 ///
 /// [DISEÑO PROPUESTO POR EL EQUIPO, NO INSTRUCCIÓN LITERAL DEL CLIENTE — ver
 /// ERS §8.2 y docs/backlog.md "Bloqueadores": confirmar con el cliente
 /// (profesor Omar) el copy/UX definitivo de estos botones antes de darlo
 /// por cerrado.]
-///
-/// La barra de progreso + texto mm:ss (RF-18) es T-032 — no está aquí
-/// todavía.
 class PracticaPalabraScreen extends StatefulWidget {
   const PracticaPalabraScreen({
     super.key,
@@ -50,11 +49,15 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   late final PalabrasService _palabrasService;
   late final ReproductorAudio _reproductor;
   late final StreamSubscription<EstadoAudio> _suscripcionAudio;
+  late final StreamSubscription<Duration> _suscripcionPosicion;
+  late final StreamSubscription<Duration?> _suscripcionDuracion;
   late final Future<DetallePalabra> _futuraPalabra;
 
   bool _significadoVisible = false;
   bool _oracionVisible = false;
   EstadoAudio _estadoAudio = EstadoAudio.detenido;
+  Duration _posicion = Duration.zero;
+  Duration? _duracion;
 
   @override
   void initState() {
@@ -63,13 +66,29 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     _reproductor = widget.reproductor ?? ReproductorAudioJustAudio();
     _futuraPalabra = _palabrasService.obtenerDetalle(widget.idPalabra);
     _suscripcionAudio = _reproductor.estado.listen((estado) {
-      if (mounted) setState(() => _estadoAudio = estado);
+      if (!mounted) return;
+      setState(() {
+        _estadoAudio = estado;
+        // RF-16/RF-17: al detener (manual o por fin natural) el indicador
+        // debe volver al inicio — sin esto, se quedaría mostrando el
+        // último valor conocido en vez de 0:00. No depende de que
+        // posicion también emita un cero justo en ese momento.
+        if (estado == EstadoAudio.detenido) _posicion = Duration.zero;
+      });
+    });
+    _suscripcionPosicion = _reproductor.posicion.listen((posicion) {
+      if (mounted) setState(() => _posicion = posicion);
+    });
+    _suscripcionDuracion = _reproductor.duracion.listen((duracion) {
+      if (mounted) setState(() => _duracion = duracion);
     });
   }
 
   @override
   void dispose() {
     _suscripcionAudio.cancel();
+    _suscripcionPosicion.cancel();
+    _suscripcionDuracion.cancel();
     unawaited(_reproductor.dispose());
     super.dispose();
   }
@@ -113,6 +132,10 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 24),
+                      if (_sePuedeSaltar) ...[
+                        _BarraDeProgreso(posicion: _posicion, duracion: _duracion),
+                        const SizedBox(height: 24),
+                      ],
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -274,6 +297,38 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     } catch (_) {
       // Ver comentario arriba.
     }
+  }
+}
+
+/// RF-18. Barra de solo lectura (no de arrastrar-para-buscar: eso no lo pide
+/// el ERS — retroceder/adelantar ya cubren el avance/retroceso, RF-14/15) +
+/// texto "mm:ss / mm:ss" tal como lo da el ejemplo del ERS ("00:03 / 00:12").
+class _BarraDeProgreso extends StatelessWidget {
+  const _BarraDeProgreso({required this.posicion, required this.duracion});
+
+  final Duration posicion;
+  final Duration? duracion;
+
+  @override
+  Widget build(BuildContext context) {
+    final duracionConocida = duracion != null && duracion!.inMilliseconds > 0;
+    final valor = duracionConocida
+        ? (posicion.inMilliseconds / duracion!.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+    return Column(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(value: valor, minHeight: 6),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${formatearTiempo(posicion)} / '
+          '${duracionConocida ? formatearTiempo(duracion!) : '--:--'}',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    );
   }
 }
 

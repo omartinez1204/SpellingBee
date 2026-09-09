@@ -54,6 +54,18 @@ class ReproductorAudioJustAudio implements ReproductorAudio {
   @override
   Stream<EstadoAudio> get estado => _controlador.stream;
 
+  // RF-18. positionStream de just_audio ya emite entre cada 16ms y 200ms
+  // durante la reproducción (documentado en su propio código) — sobra para
+  // el "al menos una vez por segundo" que pide el criterio de aceptación.
+  // No emite en pausa/detenido, pero eso no hace falta: la pantalla reinicia
+  // su propio valor mostrado a 0 al ver el estado "detenido" (ver
+  // PracticaPalabraScreen), sin depender de que este stream también lo haga.
+  @override
+  Stream<Duration> get posicion => _reproductor.positionStream;
+
+  @override
+  Stream<Duration?> get duracion => _reproductor.durationStream;
+
   void _alCambiarEstado(PlayerState estadoNativo) {
     if (_reiniciando) return;
     if (estadoNativo.processingState == ProcessingState.completed) {

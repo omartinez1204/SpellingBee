@@ -38,6 +38,8 @@ class _ClienteHttpDePrueba extends http.BaseClient {
 // del audio como una falla real.
 class _ReproductorFalso implements ReproductorAudio {
   final _controlador = StreamController<EstadoAudio>.broadcast();
+  final _controladorPosicion = StreamController<Duration>.broadcast();
+  final _controladorDuracion = StreamController<Duration?>.broadcast();
   final List<String> urlsReproducidas = [];
   int vecesPausado = 0;
   int vecesReanudado = 0;
@@ -92,10 +94,26 @@ class _ReproductorFalso implements ReproductorAudio {
     vecesAdelantado++;
   }
 
+  // T-032: el falso deja que cada prueba mande valores de posición/duración
+  // a su antojo con emitirPosicion()/emitirDuracion() — igual que
+  // simularFinNatural(), no intenta simular el ticking real de just_audio
+  // (eso se prueba aparte, en reproductor_audio_just_audio_test.dart).
+  @override
+  Stream<Duration> get posicion => _controladorPosicion.stream;
+
+  @override
+  Stream<Duration?> get duracion => _controladorDuracion.stream;
+
+  void emitirPosicion(Duration d) => _controladorPosicion.add(d);
+
+  void emitirDuracion(Duration? d) => _controladorDuracion.add(d);
+
   @override
   Future<void> dispose() async {
     disposed = true;
     await _controlador.close();
+    await _controladorPosicion.close();
+    await _controladorDuracion.close();
   }
 
   /// RF-17: simula que el audio llegó solo a su fin (sin que nadie haya
@@ -610,5 +628,132 @@ void main() {
 
       expect(reproductor.disposed, isTrue);
     });
+
+    testWidgets(
+      'RF-18: la barra de progreso y el texto de tiempo solo aparecen mientras hay algo que reproducir',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-18: el texto muestra transcurrido/total en formato mm:ss, como el ejemplo del ERS',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+
+        // Antes de conocer la duración: "--:--" en vez de una duración
+        // inventada o un cero engañoso.
+        expect(find.text('00:00 / --:--'), findsOneWidget);
+
+        reproductor.emitirDuracion(const Duration(seconds: 12));
+        reproductor.emitirPosicion(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
+
+        expect(find.text('00:03 / 00:12'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-18: la barra de progreso refleja la proporción transcurrido/total',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+
+        reproductor.emitirDuracion(const Duration(seconds: 20));
+        reproductor.emitirPosicion(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+
+        final barra = tester.widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator),
+        );
+        expect(barra.value, closeTo(0.25, 0.001));
+      },
+    );
+
+    testWidgets(
+      'RF-16/RF-18: al detener, el tiempo transcurrido regresa a 00:00',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+        reproductor.emitirDuracion(const Duration(seconds: 12));
+        reproductor.emitirPosicion(const Duration(seconds: 9));
+        await tester.pumpAndSettle();
+        expect(find.text('00:09 / 00:12'), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.stop));
+        await tester.pumpAndSettle();
+
+        // La barra completa desaparece en "detenido" (mismo criterio que
+        // retroceder/adelantar/detener) — no queda un "00:09" fantasma.
+        expect(find.byType(LinearProgressIndicator), findsNothing);
+        expect(find.textContaining('00:09'), findsNothing);
+      },
+    );
   });
 }

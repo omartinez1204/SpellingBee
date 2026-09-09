@@ -1,5 +1,4 @@
-/// Estado de reproducción de un audio (T-030). No incluye posición/duración
-/// todavía — eso es la barra de progreso de T-032.
+/// Estado de reproducción de un audio (T-030).
 enum EstadoAudio {
   /// Nada reproduciéndose; el ícono debe verse como si nunca se hubiera
   /// tocado. Es el estado inicial, el de después de "detener" (RF-16) y el
@@ -46,6 +45,16 @@ abstract class ReproductorAudio {
   /// RF-15. Exactamente 5 segundos hacia adelante, sin exceder la duración
   /// total del audio.
   Future<void> adelantar();
+
+  /// RF-18. Tiempo transcurrido, para la barra de progreso y el texto
+  /// mm:ss. Solo tiene que emitir mientras se reproduce — no hay nada que
+  /// avanzar en pausa ni en detenido (la pantalla ya sabe reiniciar su
+  /// propio valor mostrado a 0 cuando el estado pasa a "detenido").
+  Stream<Duration> get posicion;
+
+  /// RF-18. null hasta que el audio termine de cargar y se conozca su
+  /// duración total.
+  Stream<Duration?> get duracion;
 
   Future<void> dispose();
 }
