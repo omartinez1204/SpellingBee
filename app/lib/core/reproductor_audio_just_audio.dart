@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:just_audio/just_audio.dart';
 
+import 'cache_audio.dart';
+import 'cache_audio_archivo.dart';
 import 'reproductor_audio.dart';
 
 // RF-14/RF-15: el valor exacto (5s) lo confirmó el cliente, no es ajustable.
@@ -36,12 +38,18 @@ Duration posicionTrasSalto({
 /// RF-17 necesita que la palabra quede lista para repetirse — no en loop
 /// automático — hay que reaccionar al estado "completed" nosotros mismos:
 /// pausar y regresar a 0, igual que un detener() manual.
+///
+/// T-033 (RNF-03): reproducir() nunca reproduce directo de la url remota —
+/// primero pasa por CacheAudio, que descarga y guarda la primera vez y
+/// regresa la copia local de inmediato las siguientes.
 class ReproductorAudioJustAudio implements ReproductorAudio {
-  ReproductorAudioJustAudio() {
+  ReproductorAudioJustAudio({CacheAudio? cacheAudio})
+    : _cache = cacheAudio ?? CacheAudioArchivo() {
     _suscripcion = _reproductor.playerStateStream.listen(_alCambiarEstado);
   }
 
   final AudioPlayer _reproductor = AudioPlayer();
+  final CacheAudio _cache;
   final _controlador = StreamController<EstadoAudio>.broadcast();
   late final StreamSubscription<PlayerState> _suscripcion;
 
@@ -105,7 +113,12 @@ class ReproductorAudioJustAudio implements ReproductorAudio {
   Future<void> reproducir(String url) async {
     _controlador.add(EstadoAudio.cargando);
     try {
-      await _reproductor.setUrl(url);
+      // RNF-03: siempre se reproduce desde el archivo local, nunca
+      // directamente de la url — obtenerRutaLocal ya decide por su cuenta
+      // si hace falta descargarlo primero o si puede regresar de inmediato
+      // una copia que ya estaba en el dispositivo.
+      final rutaLocal = await _cache.obtenerRutaLocal(url);
+      await _reproductor.setFilePath(rutaLocal);
       await _reproductor.play();
     } catch (_) {
       // Sin esto, un fallo aquí (audio inexistente, red caída) deja el

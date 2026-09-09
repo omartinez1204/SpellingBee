@@ -45,6 +45,11 @@ dependencies:
   # T-030 (RF-12/13/16/17): reproducción de audio. Pineado por el mismo
   # motivo que file_picker arriba.
   just_audio: 0.10.6
+  # T-033 (RNF-03): caché local de audio descargado. Ya era dependencia
+  # transitiva (vía file_picker/flutter_secure_storage) en esta misma
+  # versión; se declara directo porque ahora el código de la app la importa.
+  # Pineado por el mismo motivo que file_picker arriba.
+  path_provider: 2.1.6
 
 dev_dependencies:
   flutter_test:
