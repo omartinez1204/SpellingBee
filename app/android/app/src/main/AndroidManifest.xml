@@ -1,8 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- El backend (API_BASE_URL) es http:// sin TLS en todos los escenarios
+         actuales: emulador (10.0.2.2), dispositivo físico en la misma red, o
+         el servidor real todavía sin HTTPS configurado (ver
+         docs/diseno-tecnico.md — no se menciona TLS). Esto no es nuevo con
+         T-030: las llamadas HTTP normales (paquete http) ya viajaban en
+         claro, solo que el stack de red de Dart no aplica la política de
+         "cleartext" de Android. El reproductor de audio (just_audio,
+         ExoPlayer por debajo) sí la aplica y sin usesCleartextTraffic
+         rechaza cualquier url http:// con CleartextNotPermittedException.
+         Quitar esto si el backend alguna vez sirve por HTTPS. -->
     <application
         android:label="spelling_bee"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

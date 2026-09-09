@@ -9,6 +9,12 @@ class PalabrasService {
 
   final ApiClient _api;
 
+  // url_audio viene relativo del backend (p. ej. "/assets/audios/1.mp3") a
+  // propósito — ver el comentario en palabras.service.ts. La pantalla de
+  // práctica (T-030) necesita esto para armar la url completa que le pasa
+  // al reproductor.
+  String get baseUrl => _api.baseUrl;
+
   Future<DetallePalabra> obtenerDetalle(int idPalabra) async {
     final json = await _api.get('/palabras/$idPalabra');
     return DetallePalabra.desdeJson(json);

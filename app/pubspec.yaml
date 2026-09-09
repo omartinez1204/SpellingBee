@@ -42,6 +42,9 @@ dependencies:
   # comentario ahí — Android 37 todavía no publica el paquete de plataforma
   # base en el repositorio del SDK).
   file_picker: 10.3.10
+  # T-030 (RF-12/13/16/17): reproducción de audio. Pineado por el mismo
+  # motivo que file_picker arriba.
+  just_audio: 0.10.6
 
 dev_dependencies:
   flutter_test:
