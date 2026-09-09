@@ -42,6 +42,8 @@ class _ReproductorFalso implements ReproductorAudio {
   int vecesPausado = 0;
   int vecesReanudado = 0;
   int vecesDetenido = 0;
+  int vecesRetrocedido = 0;
+  int vecesAdelantado = 0;
   bool disposed = false;
   bool fallarAlReproducir = false;
 
@@ -73,6 +75,21 @@ class _ReproductorFalso implements ReproductorAudio {
   Future<void> detener() async {
     vecesDetenido++;
     _controlador.add(EstadoAudio.detenido);
+  }
+
+  // El falso no simula posición/duración real (eso vive en
+  // ReproductorAudioJustAudio y se prueba aparte, sin Flutter de por medio,
+  // en reproductor_audio_just_audio_test.dart) — aquí solo importa que la
+  // pantalla llame al método correcto sin cambiar el estado reproduciendo/
+  // pausado en el que ya estaba.
+  @override
+  Future<void> retroceder() async {
+    vecesRetrocedido++;
+  }
+
+  @override
+  Future<void> adelantar() async {
+    vecesAdelantado++;
   }
 
   @override
@@ -335,6 +352,111 @@ void main() {
       expect(reproductor.vecesReanudado, 1);
       expect(find.byIcon(Icons.pause), findsOneWidget);
     });
+
+    testWidgets(
+      'RF-14/RF-15: retroceder y adelantar solo aparecen mientras hay algo sobre lo que actuar',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Detenido: ni retroceder ni adelantar tienen sentido todavía.
+        expect(find.byIcon(Icons.replay_5), findsNothing);
+        expect(find.byIcon(Icons.forward_5), findsNothing);
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.replay_5), findsOneWidget);
+        expect(find.byIcon(Icons.forward_5), findsOneWidget);
+
+        // Pausado: siguen teniendo sentido (RF-14/RF-15 dicen explícitamente
+        // "mientras se reproduce o está pausada").
+        await tester.tap(find.byIcon(Icons.pause));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.replay_5), findsOneWidget);
+        expect(find.byIcon(Icons.forward_5), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.stop));
+        await tester.pumpAndSettle();
+        expect(find.byIcon(Icons.replay_5), findsNothing);
+        expect(find.byIcon(Icons.forward_5), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'RF-14: tocar retroceder llama al reproductor sin cambiar el ícono principal',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.replay_5));
+        await tester.pumpAndSettle();
+
+        expect(reproductor.vecesRetrocedido, 1);
+        // Retroceder no es pausar ni detener: se sigue reproduciendo.
+        expect(find.byIcon(Icons.pause), findsOneWidget);
+        expect(reproductor.vecesPausado, 0);
+        expect(reproductor.vecesDetenido, 0);
+      },
+    );
+
+    testWidgets(
+      'RF-15: tocar adelantar llama al reproductor sin cambiar el ícono principal',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(Icons.pause)); // probar también en pausado
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.forward_5));
+        await tester.pumpAndSettle();
+
+        expect(reproductor.vecesAdelantado, 1);
+        expect(find.byIcon(Icons.play_arrow), findsOneWidget);
+        expect(reproductor.vecesReanudado, 0);
+      },
+    );
 
     testWidgets(
       'RF-16: el botón de detener solo aparece mientras hay algo que detener, y al presionarlo resetea el ícono',

@@ -4,6 +4,24 @@ import 'package:just_audio/just_audio.dart';
 
 import 'reproductor_audio.dart';
 
+// RF-14/RF-15: el valor exacto (5s) lo confirmó el cliente, no es ajustable.
+const _saltoSegundos = Duration(seconds: 5);
+
+/// Aparte para poder probarla sin AudioPlayer real (no hay canal de
+/// plataforma de audio bajo `flutter test`, así que cualquier prueba tiene
+/// que evitar tocar la instancia de just_audio). El criterio de RF-14/RF-15
+/// es exactamente esto: mover 5 segundos sin pasar de 0 ni de la duración.
+Duration posicionTrasSalto({
+  required Duration actual,
+  required Duration delta,
+  required Duration? duracion,
+}) {
+  var nueva = actual + delta;
+  if (nueva < Duration.zero) nueva = Duration.zero;
+  if (duracion != null && nueva > duracion) nueva = duracion;
+  return nueva;
+}
+
 /// Implementación real de ReproductorAudio con el paquete just_audio.
 ///
 /// just_audio.AudioPlayer.stop() documenta explícitamente que "the current
@@ -94,6 +112,20 @@ class ReproductorAudioJustAudio implements ReproductorAudio {
 
   @override
   Future<void> detener() => _reiniciar(detenerDelTodo: true);
+
+  @override
+  Future<void> retroceder() => _saltar(-_saltoSegundos);
+
+  @override
+  Future<void> adelantar() => _saltar(_saltoSegundos);
+
+  Future<void> _saltar(Duration delta) => _reproductor.seek(
+    posicionTrasSalto(
+      actual: _reproductor.position,
+      delta: delta,
+      duracion: _reproductor.duration,
+    ),
+  );
 
   @override
   Future<void> dispose() async {

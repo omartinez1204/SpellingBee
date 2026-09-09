@@ -8,13 +8,14 @@ import '../core/palabras_service.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
 
-/// RF-07 (T-026) + RF-12/13/16/17 (T-030): pantalla de práctica de UNA
-/// palabra. Muestra de inmediato y de forma visible solo la palabra en
-/// inglés y un ícono de audio; significado y oración de ejemplo quedan
+/// RF-07 (T-026) + RF-12/13/14/15/16/17 (T-030/T-031): pantalla de práctica
+/// de UNA palabra. Muestra de inmediato y de forma visible solo la palabra
+/// en inglés y un ícono de audio; significado y oración de ejemplo quedan
 /// ocultos al inicio, disponibles mediante dos botones de pista que el
 /// alumno activa voluntariamente. El ícono de audio reproduce/pausa/reanuda
-/// (RF-12/13); un botón de detener aparece mientras hay algo que detener
-/// (RF-16). No hay límite de reproducciones (RF-17): terminar o detener
+/// (RF-12/13); retroceder/adelantar 5s (RF-14/15) y detener (RF-16)
+/// aparecen mientras hay algo sobre lo que actuar (reproduciendo o
+/// pausada). No hay límite de reproducciones (RF-17): terminar o detener
 /// deja la pista lista para volver a tocarse desde el inicio.
 ///
 /// [DISEÑO PROPUESTO POR EL EQUIPO, NO INSTRUCCIÓN LITERAL DEL CLIENTE — ver
@@ -22,8 +23,8 @@ import '../core/reproductor_audio_just_audio.dart';
 /// (profesor Omar) el copy/UX definitivo de estos botones antes de darlo
 /// por cerrado.]
 ///
-/// Retroceder/adelantar 5s (RF-14/RF-15) y la barra de progreso (RF-18) son
-/// T-031/T-032 — no están aquí todavía.
+/// La barra de progreso + texto mm:ss (RF-18) es T-032 — no está aquí
+/// todavía.
 class PracticaPalabraScreen extends StatefulWidget {
   const PracticaPalabraScreen({
     super.key,
@@ -115,9 +116,28 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          if (_sePuedeSaltar) ...[
+                            IconButton(
+                              iconSize: 36,
+                              icon: const Icon(Icons.replay_5),
+                              tooltip: 'Retroceder 5 segundos',
+                              onPressed: () =>
+                                  _saltar(_reproductor.retroceder),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                           _botonReproducir(palabra.urlAudio),
-                          if (_estadoAudio == EstadoAudio.reproduciendo ||
-                              _estadoAudio == EstadoAudio.pausado) ...[
+                          if (_sePuedeSaltar) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              iconSize: 36,
+                              icon: const Icon(Icons.forward_5),
+                              tooltip: 'Adelantar 5 segundos',
+                              onPressed: () =>
+                                  _saltar(_reproductor.adelantar),
+                            ),
+                          ],
+                          if (_sePuedeSaltar) ...[
                             const SizedBox(width: 8),
                             IconButton(
                               iconSize: 36,
@@ -231,6 +251,26 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   Future<void> _detener() async {
     try {
       await _reproductor.detener();
+    } catch (_) {
+      // Ver comentario arriba.
+    }
+  }
+
+  // RF-14/RF-15: "mientras se reproduce o está pausada" — no hay nada que
+  // retroceder/adelantar en "detenido" (no hay pista cargada) ni en
+  // "cargando" (posición/duración todavía no estables). Mismo criterio que
+  // ya usa el botón de detener.
+  bool get _sePuedeSaltar =>
+      _estadoAudio == EstadoAudio.reproduciendo ||
+      _estadoAudio == EstadoAudio.pausado;
+
+  // retroceder()/adelantar() no tienen por qué fallar en la práctica (a
+  // diferencia de reproducir(), no involucran cargar nada nuevo); si de
+  // cualquier forma fallaran, no hay una retroalimentación mejor que
+  // mostrarle al alumno por un control que el ERS no especifica con error.
+  Future<void> _saltar(Future<void> Function() accion) async {
+    try {
+      await accion();
     } catch (_) {
       // Ver comentario arriba.
     }

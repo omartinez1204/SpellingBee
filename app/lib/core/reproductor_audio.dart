@@ -37,5 +37,15 @@ abstract class ReproductorAudio {
   /// RF-16. Debe dejar la posición en el inicio, no solo detener el sonido.
   Future<void> detener();
 
+  /// RF-14. Exactamente 5 segundos hacia atrás, sin pasar del segundo 0.
+  /// Válido mientras se reproduce o está pausada (no hay nada que retroceder
+  /// en "detenido" o "cargando" — por eso la pantalla solo muestra este
+  /// control en esos dos estados).
+  Future<void> retroceder();
+
+  /// RF-15. Exactamente 5 segundos hacia adelante, sin exceder la duración
+  /// total del audio.
+  Future<void> adelantar();
+
   Future<void> dispose();
 }
