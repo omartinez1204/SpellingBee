@@ -298,6 +298,10 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                       const Divider(),
                       const SizedBox(height: 16),
                       _SeccionDeletreo(palabraTexto: palabra.texto),
+                      const SizedBox(height: 32),
+                      const Divider(),
+                      const SizedBox(height: 16),
+                      _SeccionOracion(palabraTexto: palabra.texto),
                       const SizedBox(height: 16),
                       const Divider(),
                       const SizedBox(height: 16),
@@ -766,6 +770,95 @@ class _FichaVacia extends StatelessWidget {
         border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         borderRadius: BorderRadius.circular(8),
       ),
+    );
+  }
+}
+
+/// RF-26 (T-044): campo de texto para que el alumno redacte una oración
+/// usando la palabra practicada. A diferencia de RF-25 (T-043), aquí no hay
+/// botón de "confirmar" — el criterio de aceptación describe la
+/// verificación como automática y sin bloquear nada, así que se recalcula
+/// en cada cambio de texto, no al presionar algo. La verificación es
+/// puramente de PRESENCIA de texto (subcadena literal, sin distinguir
+/// mayúsculas/minúsculas), nunca de gramática ni conjugación — eso lo
+/// revisa el profesor, no el sistema (de ahí que el aviso, cuando aparece,
+/// jamás impida seguir escribiendo o continuar con el resto de la
+/// pantalla). Igual que el deletreo, no depende del cronómetro.
+class _SeccionOracion extends StatefulWidget {
+  const _SeccionOracion({required this.palabraTexto});
+
+  final String palabraTexto;
+
+  @override
+  State<_SeccionOracion> createState() => _SeccionOracionState();
+}
+
+class _SeccionOracionState extends State<_SeccionOracion> {
+  final _controlador = TextEditingController();
+  late final String _palabraEnMinusculas;
+
+  @override
+  void initState() {
+    super.initState();
+    _palabraEnMinusculas = widget.palabraTexto.toLowerCase();
+    _controlador.addListener(_alCambiarTexto);
+  }
+
+  void _alCambiarTexto() => setState(() {});
+
+  @override
+  void dispose() {
+    _controlador.removeListener(_alCambiarTexto);
+    _controlador.dispose();
+    super.dispose();
+  }
+
+  // "de al menos 1 carácter": un campo vacío (o solo espacios) todavía no
+  // es un intento de oración, así que no amerita ningún aviso — recién
+  // empezar a escribir es cuando la verificación tiene algo que decir.
+  bool get _vacia => _controlador.text.trim().isEmpty;
+
+  bool get _incluyePalabra =>
+      _controlador.text.toLowerCase().contains(_palabraEnMinusculas);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Escribe una oración usando la palabra',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _controlador,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'Escribe tu oración en inglés aquí...',
+          ),
+        ),
+        if (!_vacia && !_incluyePalabra) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Todavía no incluye la palabra "${widget.palabraTexto}", pero '
+              'puedes continuar — la oración completa la revisará tu '
+              'profesor.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

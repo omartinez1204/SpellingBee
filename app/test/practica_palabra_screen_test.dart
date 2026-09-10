@@ -1424,4 +1424,124 @@ void main() {
       },
     );
   });
+
+  group('oración con la palabra practicada (T-044)', () {
+    Future<void> abrirPantalla(WidgetTester tester) async {
+      final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+      final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+      await tester.pumpWidget(
+        _envolver(
+          PracticaPalabraScreen(
+            idPalabra: 1,
+            token: 'token-de-prueba',
+            palabrasService: servicio,
+            reproductor: _ReproductorFalso(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('RF-26: muestra un campo de texto para escribir la oración', (
+      tester,
+    ) async {
+      await abrirPantalla(tester);
+
+      expect(find.byType(TextField), findsOneWidget);
+    });
+
+    testWidgets('RF-26: con el campo vacío no muestra ningún aviso', (tester) async {
+      await abrirPantalla(tester);
+
+      expect(find.textContaining('Todavía no incluye'), findsNothing);
+    });
+
+    testWidgets(
+      'RF-26: si la oración no incluye la palabra, avisa mencionándola, sin bloquear nada',
+      (tester) async {
+        await abrirPantalla(tester);
+
+        await tester.enterText(find.byType(TextField), 'This is a nice sentence.');
+        await tester.pump();
+
+        expect(find.textContaining('Todavía no incluye'), findsOneWidget);
+        expect(find.textContaining('"business"'), findsOneWidget);
+
+        // "Sin bloquear nada": el resto de la pantalla (cronómetro) sigue
+        // funcionando con normalidad mientras el aviso está visible.
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        expect(find.widgetWithText(FilledButton, 'Terminé'), findsOneWidget);
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'RF-26: si la oración incluye la palabra, sin importar mayúsculas/minúsculas, no avisa',
+      (tester) async {
+        await abrirPantalla(tester);
+
+        await tester.enterText(find.byType(TextField), 'I work in BUSINESS.');
+        await tester.pump();
+
+        expect(find.textContaining('Todavía no incluye'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'RF-26: basta con que la palabra aparezca como subcadena, no como palabra completa aislada',
+      (tester) async {
+        await abrirPantalla(tester);
+
+        // "Businesses" contiene "business" como subcadena literal — el
+        // criterio de RF-26 es explícito en que esto NO es una validación
+        // de palabra completa ni de gramática/conjugación.
+        await tester.enterText(
+          find.byType(TextField),
+          'Businesses need good employees.',
+        );
+        await tester.pump();
+
+        expect(find.textContaining('Todavía no incluye'), findsNothing);
+      },
+    );
+
+    testWidgets('RF-26: el aviso desaparece en cuanto se corrige el texto', (
+      tester,
+    ) async {
+      await abrirPantalla(tester);
+
+      await tester.enterText(find.byType(TextField), 'This is a nice sentence.');
+      await tester.pump();
+      expect(find.textContaining('Todavía no incluye'), findsOneWidget);
+
+      await tester.enterText(
+        find.byType(TextField),
+        'This is a nice sentence about my business.',
+      );
+      await tester.pump();
+
+      expect(find.textContaining('Todavía no incluye'), findsNothing);
+    });
+
+    testWidgets(
+      'la oración no depende del cronómetro: se puede escribir antes de presionar Iniciar',
+      (tester) async {
+        await abrirPantalla(tester);
+
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsOneWidget);
+
+        await tester.enterText(
+          find.byType(TextField),
+          'This sentence mentions business.',
+        );
+        await tester.pump();
+
+        expect(find.textContaining('Todavía no incluye'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsOneWidget);
+      },
+    );
+  });
 }
