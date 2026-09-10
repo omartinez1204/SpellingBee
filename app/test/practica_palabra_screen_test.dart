@@ -138,6 +138,17 @@ class _RelojFalso {
 Widget _envolver(Widget child) =>
     MaterialApp(home: child, debugShowCheckedModeBanner: false);
 
+// La pantalla completa (palabra + audio + pistas + deletreo + cronómetro) no
+// cabe en los 600px de alto del viewport por defecto de las pruebas —
+// tocar cualquier cosa bajo el "pliegue" necesita primero desplazarla a la
+// vista dentro del SingleChildScrollView que envuelve toda la columna.
+Future<void> _tocar(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pump();
+  await tester.tap(finder);
+  await tester.pump();
+}
+
 const _palabraConAudio = {
   'id': 1,
   'texto': 'business',
@@ -834,6 +845,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
 
@@ -867,6 +880,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
 
@@ -901,6 +916,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
         reloj.avanzar(const Duration(seconds: 1));
@@ -936,10 +953,14 @@ void main() {
         // Antes de iniciar: ni siquiera existe.
         expect(find.widgetWithText(FilledButton, 'Terminé'), findsNothing);
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
         expect(find.widgetWithText(FilledButton, 'Terminé'), findsOneWidget);
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
         await tester.pump();
 
@@ -979,6 +1000,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
         for (var i = 0; i < 3; i++) {
@@ -987,6 +1010,8 @@ void main() {
         }
         expect(find.text('00:03'), findsOneWidget);
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
         await tester.pump();
         expect(find.text('00:03'), findsOneWidget);
@@ -1028,7 +1053,11 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
         await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
         // La consulta a PracticaService es async — pumpAndSettle espera a
@@ -1065,6 +1094,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
         // 3s < los 10s de mejor marca previa: debe contar como mejora.
@@ -1072,6 +1103,8 @@ void main() {
           reloj.avanzar(const Duration(seconds: 1));
           await tester.pump(const Duration(seconds: 1));
         }
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
         await tester.pumpAndSettle();
 
@@ -1106,10 +1139,14 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
         await tester.pump();
         reloj.avanzar(const Duration(seconds: 3));
         await tester.pump(const Duration(seconds: 3));
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
         await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
         await tester.pumpAndSettle();
 
@@ -1120,6 +1157,270 @@ void main() {
         );
         // RF-21 no depende de RF-22: el tiempo ya fijado se mantiene.
         expect(find.text('00:03'), findsOneWidget);
+      },
+    );
+  });
+
+  group('deletreo por bloques de letras (T-043)', () {
+    testWidgets(
+      'RF-25: una ficha por cada letra de la palabra, sin distractores, y "Verificar orden" arranca deshabilitado',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Ordena las letras para deletrear la palabra'),
+          findsOneWidget,
+        );
+
+        // 'business' tiene 8 letras, con 's' repetida 3 veces — cada
+        // POSICIÓN original debe existir exactamente una vez (disponible o
+        // ya colocada), nunca duplicada ni faltante. Eso es justo lo que
+        // garantiza "sin distractores": ni una ficha de más ni de menos.
+        for (var i = 0; i < 'business'.length; i++) {
+          final disponible = find.byKey(ValueKey('ficha-disponible-$i'));
+          final colocada = find.byKey(ValueKey('ficha-colocada-$i'));
+          expect(
+            tester.widgetList(disponible).length +
+                tester.widgetList(colocada).length,
+            1,
+            reason: 'la ficha de la posición $i debe existir exactamente una vez',
+          );
+        }
+
+        final boton = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Verificar orden'),
+        );
+        expect(boton.onPressed, isNull);
+      },
+    );
+
+    testWidgets(
+      'RF-25: al colocar las fichas en el orden correcto y verificar, indica que el deletreo es correcto',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Tocar por posición ORIGINAL 0..7, en ese orden, reconstruye
+        // "business" sin importar en qué orden las barajó la pantalla —
+        // cada ficha lleva su posición real como key, no su letra.
+        for (var i = 0; i < 'business'.length; i++) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+
+        final boton = tester.widget<FilledButton>(
+          find.widgetWithText(FilledButton, 'Verificar orden'),
+        );
+        expect(boton.onPressed, isNotNull);
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+      },
+    );
+
+    testWidgets('RF-25: si el orden no coincide, lo indica sin bloquear el avance', (
+      tester,
+    ) async {
+      final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+      final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+      await tester.pumpWidget(
+        _envolver(
+          PracticaPalabraScreen(
+            idPalabra: 1,
+            token: 'token-de-prueba',
+            palabrasService: servicio,
+            reproductor: _ReproductorFalso(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Orden deliberadamente incorrecto: intercambia las dos primeras
+      // posiciones ("ubsiness..." en vez de "business...").
+      for (final i in [1, 0, 2, 3, 4, 5, 6, 7]) {
+        await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+      }
+
+      await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+
+      expect(find.textContaining('Todavía no es el orden correcto'), findsOneWidget);
+      expect(find.textContaining('¡Correcto!'), findsNothing);
+
+      // "Sin bloquear el avance": el resto de la pantalla (el cronómetro)
+      // sigue funcionando con normalidad después de un intento fallido.
+      await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+      expect(find.widgetWithText(FilledButton, 'Terminé'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
+      'RF-25: dos fichas con la misma letra son intercambiables — no importa cuál instancia de "s" se use',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 'business' = b(0) u(1) s(2) i(3) n(4) e(5) s(6) s(7): las
+        // posiciones 6 y 7 son ambas 's'. Colocar la ficha de la posición 7
+        // antes que la de la posición 6 sigue deletreando "business" al
+        // pie de la letra — el alumno no tiene, ni debería tener, forma de
+        // distinguir una 's' de otra.
+        for (final i in [0, 1, 2, 3, 4, 5, 7, 6]) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-25: tras un intento incorrecto, se pueden quitar las fichas colocadas y volver a intentarlo sin salir de la pantalla',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Orden deliberadamente incorrecto: 'b' y 'u' (genuinamente letras
+        // distintas, a diferencia de las tres 's') intercambiadas.
+        const ordenIncorrecto = [1, 0, 2, 3, 4, 5, 6, 7];
+        for (final i in ordenIncorrecto) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+        expect(find.textContaining('Todavía no es el orden correcto'), findsOneWidget);
+
+        // Quita todas las fichas colocadas, una por una — el aviso
+        // desaparece en cuanto cambia la disposición, no hace falta salir
+        // de la pantalla ni recargar la palabra.
+        for (final i in ordenIncorrecto) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-colocada-$i')));
+        }
+        expect(find.textContaining('Todavía no es el orden correcto'), findsNothing);
+
+        for (var i = 0; i < 'business'.length; i++) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'una vez correcto, las fichas quedan fijas (ya no se pueden volver a mover)',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        for (var i = 0; i < 'business'.length; i++) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+
+        await _tocar(tester, find.byKey(const ValueKey('ficha-colocada-0')));
+
+        // Si se hubiera podido quitar, el aviso de éxito habría
+        // desaparecido (igual que en la prueba de corrección de arriba) y
+        // la ficha 0 habría vuelto a "disponible".
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+        expect(find.byKey(const ValueKey('ficha-colocada-0')), findsOneWidget);
+        expect(find.byKey(const ValueKey('ficha-disponible-0')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'el deletreo no depende del cronómetro: se puede completar antes de presionar Iniciar',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // El cronómetro sigue sin iniciarse durante todo este intento.
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsOneWidget);
+
+        for (var i = 0; i < 'business'.length; i++) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+        expect(find.text('00:00'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsOneWidget);
       },
     );
   });

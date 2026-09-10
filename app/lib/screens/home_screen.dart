@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../core/auth_controller.dart';
 import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
-import 'practica_palabra_screen.dart';
 
 /// Placeholder: el catálogo/práctica del alumno todavía no tiene pantalla
 /// propia en el backlog (T-026 es solo la práctica de una palabra ya
@@ -57,19 +56,6 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
                 child: const Text('Cambiar mi contraseña'),
-              ),
-              const SizedBox(height: 12),
-              // TEMPORAL, solo para revisión manual de T-042 — revertir al terminar.
-              OutlinedButton(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => PracticaPalabraScreen(
-                      idPalabra: 1,
-                      token: sesion.token,
-                    ),
-                  ),
-                ),
-                child: const Text('[TEMP] Practicar palabra 1 (business)'),
               ),
               const SizedBox(height: 12),
               FilledButton.tonal(

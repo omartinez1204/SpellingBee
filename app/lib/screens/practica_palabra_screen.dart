@@ -297,6 +297,10 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                       const SizedBox(height: 32),
                       const Divider(),
                       const SizedBox(height: 16),
+                      _SeccionDeletreo(palabraTexto: palabra.texto),
+                      const SizedBox(height: 16),
+                      const Divider(),
+                      const SizedBox(height: 16),
                       _SeccionCronometro(
                         iniciado: _cronometroIniciado,
                         terminado: _practicaTerminada,
@@ -567,6 +571,200 @@ class _BotonPista extends StatelessWidget {
                 fontStyle: FontStyle.italic,
                 color: Theme.of(context).colorScheme.outline,
               ),
+      ),
+    );
+  }
+}
+
+/// RF-25 (T-043): bloques de letras estilo Duolingo. Cada ficha recuerda la
+/// posición ORIGINAL de su letra dentro de `palabraTexto` (no solo el
+/// carácter) para poder tener varias fichas con la misma letra sin
+/// confundirlas entre sí (p. ej. "business" trae tres fichas "s" distintas).
+/// Verificar consiste en unir las letras en el orden colocado y compararlo
+/// contra la palabra original: al ser fichas con las letras EXACTAS de la
+/// palabra (sin distractores), esa comparación de texto nunca necesita
+/// normalizar mayúsculas/minúsculas ni espacios, tal como aclara el propio
+/// criterio de RF-25. Interacción por TOQUE, no arrastre: el diseño técnico
+/// acepta "fichas arrastrables/tocables" como equivalentes, y tocar es más
+/// simple de implementar y de probar de forma determinista que un gesto de
+/// arrastre.
+///
+/// Independiente del cronómetro (RF-19/T-040): igual que el reproductor de
+/// audio y las pistas, ya utilizables antes de presionar "Iniciar" desde
+/// T-030, este bloque no revisa `_cronometroIniciado` — el cronómetro solo
+/// mide el tiempo total, no impone una secuencia obligatoria de pasos.
+class _SeccionDeletreo extends StatefulWidget {
+  const _SeccionDeletreo({required this.palabraTexto});
+
+  final String palabraTexto;
+
+  @override
+  State<_SeccionDeletreo> createState() => _SeccionDeletreoState();
+}
+
+class _SeccionDeletreoState extends State<_SeccionDeletreo> {
+  late final List<String> _letras;
+  late List<int> _disponibles;
+  final List<int> _colocados = [];
+
+  /// null: todavía no se ha verificado (o la disposición cambió desde la
+  /// última verificación). true/false: resultado de la última verificación.
+  bool? _esCorrecto;
+
+  @override
+  void initState() {
+    super.initState();
+    _letras = widget.palabraTexto.split('');
+    _disponibles = List.generate(_letras.length, (indice) => indice)
+      ..shuffle();
+  }
+
+  bool get _completo => _colocados.length == _letras.length;
+
+  void _colocar(int indice) {
+    setState(() {
+      _disponibles.remove(indice);
+      _colocados.add(indice);
+      _esCorrecto = null;
+    });
+  }
+
+  // Permite corregir un error de toque sin tener que reiniciar todo el
+  // ejercicio — no lo exige RF-25 literalmente, pero sin esto una sola ficha
+  // mal colocada sería irrecuperable.
+  void _quitar(int indice) {
+    setState(() {
+      _colocados.remove(indice);
+      _disponibles.add(indice);
+      _esCorrecto = null;
+    });
+  }
+
+  // Compara TEXTO, no identidad de fichas: con letras repetidas (p. ej. las
+  // tres "s" de "business"), cuál ficha física ocupó cuál posición no
+  // importa — lo único que RF-25 pide comparar es si lo armado deletrea la
+  // palabra, y dos fichas con la misma letra son intercambiables entre sí.
+  void _verificar() {
+    if (!_completo) return;
+    final formada = _colocados.map((indice) => _letras[indice]).join();
+    setState(() => _esCorrecto = formada == widget.palabraTexto);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // RF-25: "el sistema lo indica sin bloquear el avance" — solo se
+    // congelan las fichas cuando el resultado ya fue correcto; si fue
+    // incorrecto, el alumno sigue libre de ajustar y volver a verificar.
+    final bloqueado = _esCorrecto == true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Ordena las letras para deletrear la palabra',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (var i = 0; i < _letras.length; i++)
+              if (i < _colocados.length)
+                _FichaLetra(
+                  key: ValueKey('ficha-colocada-${_colocados[i]}'),
+                  letra: _letras[_colocados[i]],
+                  onPresionar: bloqueado ? null : () => _quitar(_colocados[i]),
+                )
+              else
+                const _FichaVacia(),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final indice in _disponibles)
+              _FichaLetra(
+                key: ValueKey('ficha-disponible-$indice'),
+                letra: _letras[indice],
+                onPresionar: () => _colocar(indice),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: _completo && !bloqueado ? _verificar : null,
+          child: const Text('Verificar orden'),
+        ),
+        if (_esCorrecto != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _esCorrecto!
+                  ? Colors.green.shade100
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _esCorrecto!
+                  ? '¡Correcto! Ese es el orden de las letras.'
+                  : 'Todavía no es el orden correcto — ajusta las fichas e '
+                        'inténtalo de nuevo.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FichaLetra extends StatelessWidget {
+  const _FichaLetra({super.key, required this.letra, required this.onPresionar});
+
+  final String letra;
+  final VoidCallback? onPresionar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.secondaryContainer,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onPresionar,
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Text(letra, style: Theme.of(context).textTheme.titleLarge),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Espacio reservado para una letra que el alumno todavía no ha colocado —
+/// deja ver cuántas fichas faltan sin revelar cuáles son.
+class _FichaVacia extends StatelessWidget {
+  const _FichaVacia();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
       ),
     );
   }
