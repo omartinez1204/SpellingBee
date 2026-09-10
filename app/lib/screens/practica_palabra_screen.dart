@@ -5,26 +5,30 @@ import 'package:flutter/material.dart';
 import '../core/api_exception.dart';
 import '../core/detalle_palabra.dart';
 import '../core/formato_tiempo.dart';
+import '../core/mensaje_motivacional.dart';
 import '../core/palabras_service.dart';
+import '../core/practica_service.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
 
-/// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032) + RF-19 a RF-21
-/// (T-040/T-041): pantalla de práctica de UNA palabra. Muestra de inmediato
-/// y de forma visible solo la palabra en inglés y un ícono de audio;
-/// significado y oración de ejemplo quedan ocultos al inicio, disponibles
-/// mediante dos botones de pista que el alumno activa voluntariamente. El
-/// ícono de audio reproduce/pausa/reanuda (RF-12/13); retroceder/adelantar
-/// 5s (RF-14/15), detener (RF-16) y la barra de progreso + texto mm:ss
-/// (RF-18) aparecen mientras hay algo sobre lo que actuar (reproduciendo o
-/// pausada). No hay límite de reproducciones (RF-17): terminar o detener
-/// deja la pista lista para volver a tocarse desde el inicio. Debajo, un
-/// cronómetro único para toda la práctica de la palabra permanece en 00:00
-/// hasta que el alumno presiona "Iniciar"; a partir de ahí corre solo,
-/// actualizándose cada segundo, hasta que presiona "Terminé", que lo
-/// detiene y fija el tiempo final (RF-21) — guardar ese tiempo en el
-/// backend (T-045) y mostrar el mensaje motivacional (T-042) quedan fuera
-/// de esta pantalla todavía.
+/// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032) + RF-19 a RF-22
+/// (T-040/T-041/T-042): pantalla de práctica de UNA palabra. Muestra de
+/// inmediato y de forma visible solo la palabra en inglés y un ícono de
+/// audio; significado y oración de ejemplo quedan ocultos al inicio,
+/// disponibles mediante dos botones de pista que el alumno activa
+/// voluntariamente. El ícono de audio reproduce/pausa/reanuda (RF-12/13);
+/// retroceder/adelantar 5s (RF-14/15), detener (RF-16) y la barra de
+/// progreso + texto mm:ss (RF-18) aparecen mientras hay algo sobre lo que
+/// actuar (reproduciendo o pausada). No hay límite de reproducciones
+/// (RF-17): terminar o detener deja la pista lista para volver a tocarse
+/// desde el inicio. Debajo, un cronómetro único para toda la práctica de la
+/// palabra permanece en 00:00 hasta que el alumno presiona "Iniciar"; a
+/// partir de ahí corre solo, actualizándose cada segundo, hasta que
+/// presiona "Terminé", que lo detiene y fija el tiempo final (RF-21) y
+/// dispara la consulta a GET /practica/mejor-tiempo para mostrar un mensaje
+/// motivacional (RF-22): bienvenida en el primer intento, o mejoró/igualó/
+/// no superó comparado con la marca previa. Guardar el registro en el
+/// backend (T-045) queda fuera de esta pantalla todavía.
 ///
 /// [DISEÑO PROPUESTO POR EL EQUIPO, NO INSTRUCCIÓN LITERAL DEL CLIENTE — ver
 /// ERS §8.2 y docs/backlog.md "Bloqueadores": confirmar con el cliente
@@ -34,13 +38,24 @@ class PracticaPalabraScreen extends StatefulWidget {
   const PracticaPalabraScreen({
     super.key,
     required this.idPalabra,
+    required this.token,
     this.palabrasService,
     this.reproductor,
     this.ahora,
+    this.practicaService,
   });
 
   final int idPalabra;
   final PalabrasService? palabrasService;
+
+  /// RF-22 (T-042): GET /practica/mejor-tiempo/:id necesita sesión — el
+  /// backend responde sobre el alumno del propio JWT, no hay id que pasar
+  /// aparte. Quien navega a esta pantalla siempre tiene sesión iniciada
+  /// (HomeScreen ya exige authController.sesion no nulo para existir), así
+  /// que se pide el token directo — no todo AuthController — igual de
+  /// angosto que palabrasService/reproductor: esta pantalla no necesita
+  /// nada más de la sesión (ni rol, ni cerrarla, etc).
+  final String token;
 
   /// Inyectable solo para pruebas — mismo motivo que palabrasService: sin
   /// esto, la pantalla siempre construiría un ReproductorAudioJustAudio real,
@@ -54,6 +69,10 @@ class PracticaPalabraScreen extends StatefulWidget {
   /// forma determinista de probar RF-20/RNF-04 bajo `flutter test`.
   final DateTime Function()? ahora;
 
+  /// Inyectable solo para pruebas (T-042) — mismo motivo que
+  /// palabrasService.
+  final PracticaService? practicaService;
+
   @override
   State<PracticaPalabraScreen> createState() => _PracticaPalabraScreenState();
 }
@@ -62,6 +81,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   late final PalabrasService _palabrasService;
   late final ReproductorAudio _reproductor;
   late final DateTime Function() _ahora;
+  late final PracticaService _practicaService;
   late final StreamSubscription<EstadoAudio> _suscripcionAudio;
   late final StreamSubscription<Duration> _suscripcionPosicion;
   late final StreamSubscription<Duration?> _suscripcionDuracion;
@@ -83,6 +103,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   Duration _tiempoTranscurrido = Duration.zero;
   Timer? _tickerCronometro;
   bool _practicaTerminada = false;
+  String? _mensajeMotivacional;
 
   bool get _cronometroIniciado => _inicioCronometro != null;
 
@@ -92,6 +113,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     _palabrasService = widget.palabrasService ?? PalabrasService();
     _reproductor = widget.reproductor ?? ReproductorAudioJustAudio();
     _ahora = widget.ahora ?? DateTime.now;
+    _practicaService = widget.practicaService ?? PracticaService();
     _futuraPalabra = _palabrasService.obtenerDetalle(widget.idPalabra);
     _suscripcionAudio = _reproductor.estado.listen((estado) {
       if (!mounted) return;
@@ -134,10 +156,34 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   // allá de lo que el alumno alcanzó a ver en el último tick. Cancelar el
   // ticker sin tocar _tiempoTranscurrido deja fijo exactamente ese último
   // valor mostrado.
-  void _terminarPractica() {
+  Future<void> _terminarPractica() async {
     if (!_cronometroIniciado || _practicaTerminada) return;
     _tickerCronometro?.cancel();
     setState(() => _practicaTerminada = true);
+
+    // RF-22: la comparación es "best effort" — el tiempo ya quedó fijo y
+    // registrado en pantalla (RF-21) sin importar si esto falla; solo el
+    // mensaje motivacional depende de la red.
+    try {
+      final mejorPrevio = await _practicaService.obtenerMejorTiempoSegundos(
+        widget.idPalabra,
+        widget.token,
+      );
+      if (!mounted) return;
+      setState(() {
+        _mensajeMotivacional = construirMensajeMotivacional(
+          actualSegundos: _tiempoTranscurrido.inSeconds,
+          mejorPrevioSegundos: mejorPrevio,
+        );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No se pudo cargar tu comparación con tu mejor tiempo.'),
+        ),
+      );
+    }
   }
 
   @override
@@ -255,6 +301,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                         iniciado: _cronometroIniciado,
                         terminado: _practicaTerminada,
                         tiempoTranscurrido: _tiempoTranscurrido,
+                        mensajeMotivacional: _mensajeMotivacional,
                         onIniciar: _iniciarCronometro,
                         onTerminar: _terminarPractica,
                       ),
@@ -383,6 +430,7 @@ class _SeccionCronometro extends StatelessWidget {
     required this.iniciado,
     required this.terminado,
     required this.tiempoTranscurrido,
+    required this.mensajeMotivacional,
     required this.onIniciar,
     required this.onTerminar,
   });
@@ -390,6 +438,11 @@ class _SeccionCronometro extends StatelessWidget {
   final bool iniciado;
   final bool terminado;
   final Duration tiempoTranscurrido;
+
+  /// RF-22 (T-042). null mientras no se ha terminado, o mientras la
+  /// consulta al backend sigue en vuelo — no hay nada que mostrar todavía,
+  /// no es un estado de error.
+  final String? mensajeMotivacional;
   final VoidCallback onIniciar;
   final VoidCallback onTerminar;
 
@@ -416,6 +469,24 @@ class _SeccionCronometro extends StatelessWidget {
             icon: const Icon(Icons.check),
             label: const Text('Terminé'),
           ),
+        if (mensajeMotivacional != null) ...[
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              mensajeMotivacional!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

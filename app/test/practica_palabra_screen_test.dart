@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/palabras_service.dart';
+import 'package:spelling_bee/core/practica_service.dart';
 import 'package:spelling_bee/core/reproductor_audio.dart';
 import 'package:spelling_bee/screens/practica_palabra_screen.dart';
 
@@ -156,6 +157,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: _ReproductorFalso(),
           ),
@@ -182,6 +184,7 @@ void main() {
       _envolver(
         PracticaPalabraScreen(
           idPalabra: 1,
+          token: 'token-de-prueba',
           palabrasService: servicio,
           reproductor: _ReproductorFalso(),
         ),
@@ -209,6 +212,7 @@ void main() {
       _envolver(
         PracticaPalabraScreen(
           idPalabra: 1,
+          token: 'token-de-prueba',
           palabrasService: servicio,
           reproductor: _ReproductorFalso(),
         ),
@@ -239,6 +243,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: _ReproductorFalso(),
           ),
@@ -277,6 +282,7 @@ void main() {
       _envolver(
         PracticaPalabraScreen(
           idPalabra: 999999,
+          token: 'token-de-prueba',
           palabrasService: servicio,
           reproductor: _ReproductorFalso(),
         ),
@@ -305,6 +311,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -334,6 +341,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: reproductor,
           ),
@@ -362,6 +370,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: reproductor,
           ),
@@ -394,6 +403,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -435,6 +445,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -467,6 +478,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -499,6 +511,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -532,6 +545,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: reproductor,
           ),
@@ -564,6 +578,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -598,6 +613,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: reproductor,
           ),
@@ -628,6 +644,7 @@ void main() {
         _envolver(
           PracticaPalabraScreen(
             idPalabra: 1,
+            token: 'token-de-prueba',
             palabrasService: servicio,
             reproductor: reproductor,
           ),
@@ -652,6 +669,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -679,6 +697,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -712,6 +731,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -744,6 +764,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: reproductor,
             ),
@@ -769,7 +790,7 @@ void main() {
     );
   });
 
-  group('cronómetro de práctica (T-040/T-041)', () {
+  group('cronómetro de práctica (T-040/T-041/T-042)', () {
     testWidgets(
       'RF-19: antes de iniciar, se ve fijo en 00:00 con el botón visible',
       (tester) async {
@@ -780,6 +801,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: _ReproductorFalso(),
             ),
@@ -803,6 +825,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: _ReproductorFalso(),
               ahora: reloj.ahora,
@@ -835,6 +858,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: _ReproductorFalso(),
               ahora: reloj.ahora,
@@ -868,6 +892,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: _ReproductorFalso(),
               ahora: reloj.ahora,
@@ -899,6 +924,7 @@ void main() {
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: _ReproductorFalso(),
               ahora: reloj.ahora,
@@ -928,15 +954,26 @@ void main() {
       (tester) async {
         final cliente = _ClienteHttpDePrueba(_palabraConAudio);
         final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        // Sin esto, presionar "Terminé" (T-042) haría una llamada de red de
+        // verdad a GET /practica/mejor-tiempo — no relevante para esta
+        // prueba de RF-21, pero necesaria para no depender de la red bajo
+        // `flutter test`.
+        final practicaService = PracticaService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba({'mejor_tiempo_segundos': null}),
+          ),
+        );
         final reloj = _RelojFalso();
 
         await tester.pumpWidget(
           _envolver(
             PracticaPalabraScreen(
               idPalabra: 1,
+              token: 'token-de-prueba',
               palabrasService: servicio,
               reproductor: _ReproductorFalso(),
               ahora: reloj.ahora,
+              practicaService: practicaService,
             ),
           ),
         );
@@ -962,6 +999,127 @@ void main() {
         await tester.pump(const Duration(seconds: 5));
         expect(find.text('00:03'), findsOneWidget);
         expect(find.text('00:08'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'RF-22: al terminar por primera vez (mejor tiempo null), muestra el mensaje de bienvenida',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final practicaService = PracticaService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba({'mejor_tiempo_segundos': null}),
+          ),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        // La consulta a PracticaService es async — pumpAndSettle espera a
+        // que resuelva y a que el setState() del mensaje se pinte.
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('primer intento'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-22: si mejoró su mejor tiempo previo, lo dice mencionando la marca anterior',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final practicaService = PracticaService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba({'mejor_tiempo_segundos': 10}),
+          ),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        // 3s < los 10s de mejor marca previa: debe contar como mejora.
+        for (var i = 0; i < 3; i++) {
+          reloj.avanzar(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+        }
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('Mejoraste'), findsOneWidget);
+        expect(find.textContaining('00:10'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'si falla la consulta de mejor tiempo, avisa sin tronar y el tiempo ya fijado no se pierde',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final practicaService = PracticaService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba({}, statusCode: 500),
+          ),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        reloj.avanzar(const Duration(seconds: 3));
+        await tester.pump(const Duration(seconds: 3));
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(
+          find.text('No se pudo cargar tu comparación con tu mejor tiempo.'),
+          findsOneWidget,
+        );
+        // RF-21 no depende de RF-22: el tiempo ya fijado se mantiene.
+        expect(find.text('00:03'), findsOneWidget);
       },
     );
   });

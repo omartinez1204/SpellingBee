@@ -6,10 +6,17 @@ import { AuthModule } from './auth/auth.module.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
 import { NivelesModule } from './niveles/niveles.module.js';
 import { PalabrasModule } from './palabras/palabras.module.js';
+import { PracticaModule } from './practica/practica.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
-  imports: [PrismaModule, AuthModule, NivelesModule, PalabrasModule],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    NivelesModule,
+    PalabrasModule,
+    PracticaModule,
+  ],
   controllers: [AppController],
   providers: [
     AppService,

@@ -43,7 +43,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 
 - [x] **T-040** Botón de inicio + cronómetro único combinado en 00:00 hasta que el alumno lo activa (RF-19), actualizado en tiempo real (RF-20).
 - [x] **T-041** Botón "Terminé" que detiene el cronómetro y fija el tiempo final (RF-21).
-- [ ] **T-042** `GET /practica/mejor-tiempo/:id_palabra` + UI de mensaje motivacional (mejora/empate/no-mejora) o mensaje de bienvenida en el primer intento (RF-22).
+- [x] **T-042** `GET /practica/mejor-tiempo/:id_palabra` + UI de mensaje motivacional (mejora/empate/no-mejora) o mensaje de bienvenida en el primer intento (RF-22).
 - [ ] **T-043** Mecánica de bloques de letras para ordenar (estilo Duolingo), sin distractores, verificación solo por orden de fichas (RF-25).
 - [ ] **T-044** Campo de texto para la oración + validación de que la palabra practicada aparece como subcadena literal, sin distinguir mayúsculas/minúsculas (RF-26). No bloquea el guardado si falla.
 - [ ] **T-045** `POST /practica` (RF-21, RF-27): guarda tiempo, resultado de deletreo y oración; **nunca** acepta ni persiste audio del alumno.
