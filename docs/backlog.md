@@ -46,7 +46,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 - [x] **T-042** `GET /practica/mejor-tiempo/:id_palabra` + UI de mensaje motivacional (mejora/empate/no-mejora) o mensaje de bienvenida en el primer intento (RF-22).
 - [x] **T-043** Mecánica de bloques de letras para ordenar (estilo Duolingo), sin distractores, verificación solo por orden de fichas (RF-25).
 - [x] **T-044** Campo de texto para la oración + validación de que la palabra practicada aparece como subcadena literal, sin distinguir mayúsculas/minúsculas (RF-26). No bloquea el guardado si falla.
-- [ ] **T-045** `POST /practica` (RF-21, RF-27): guarda tiempo, resultado de deletreo y oración; **nunca** acepta ni persiste audio del alumno.
+- [x] **T-045** `POST /practica` (RF-21, RF-27): guarda tiempo, resultado de deletreo y oración; **nunca** acepta ni persiste audio del alumno.
 - [ ] **T-046** Racha de días consecutivos por fecha calendario **local del dispositivo** (RF-23) y `GET /racha`.
 - [ ] **T-047** Insignia + mensaje de felicitación al completar el 100% de un nivel (RF-24) y `GET /progreso/insignias`.
 - [ ] **T-048** Flutter: botón "Escúchate" (RF-40) — graba con el micrófono, reproduce una vez, borra el archivo del dispositivo de inmediato. 100% local, sin llamadas a la API. Opcional: el alumno puede terminar sin usarlo.

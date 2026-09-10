@@ -19,4 +19,26 @@ class PracticaService {
     );
     return json['mejor_tiempo_segundos'] as int?;
   }
+
+  /// RF-21/RF-27 (T-045): POST /practica. Exactamente estos 4 campos, nunca
+  /// audio del alumno (RF-27/RF-40) — el backend además rechaza la petición
+  /// entera si trae cualquier campo fuera de estos.
+  Future<void> guardarPractica({
+    required int idPalabra,
+    required int tiempoSegundos,
+    required String oracionAlumno,
+    required bool deletreoCorrecto,
+    required String token,
+  }) {
+    return _api.post(
+      '/practica',
+      {
+        'id_palabra': idPalabra,
+        'tiempo_segundos': tiempoSegundos,
+        'oracion_alumno': oracionAlumno,
+        'deletreo_correcto': deletreoCorrecto,
+      },
+      token: token,
+    );
+  }
 }

@@ -24,11 +24,13 @@ import '../core/reproductor_audio_just_audio.dart';
 /// desde el inicio. Debajo, un cronómetro único para toda la práctica de la
 /// palabra permanece en 00:00 hasta que el alumno presiona "Iniciar"; a
 /// partir de ahí corre solo, actualizándose cada segundo, hasta que
-/// presiona "Terminé", que lo detiene y fija el tiempo final (RF-21) y
+/// presiona "Terminé", que lo detiene y fija el tiempo final (RF-21),
 /// dispara la consulta a GET /practica/mejor-tiempo para mostrar un mensaje
-/// motivacional (RF-22): bienvenida en el primer intento, o mejoró/igualó/
-/// no superó comparado con la marca previa. Guardar el registro en el
-/// backend (T-045) queda fuera de esta pantalla todavía.
+/// motivacional (RF-22) — bienvenida en el primer intento, o mejoró/igualó/
+/// no superó comparado con la marca previa — y guarda el intento completo
+/// vía POST /practica (RF-21/RF-27, T-045): tiempo, resultado del deletreo
+/// (RF-25) y la oración escrita (RF-26), tal como estén en ese momento, sin
+/// exigir que ninguna de las dos esté "terminada" o sea correcta.
 ///
 /// [DISEÑO PROPUESTO POR EL EQUIPO, NO INSTRUCCIÓN LITERAL DEL CLIENTE — ver
 /// ERS §8.2 y docs/backlog.md "Bloqueadores": confirmar con el cliente
@@ -92,6 +94,15 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   EstadoAudio _estadoAudio = EstadoAudio.detenido;
   Duration _posicion = Duration.zero;
   Duration? _duracion;
+
+  // T-045: acceso de solo lectura al estado de deletreo/oración al momento
+  // de presionar "Terminé" — sin subir ese estado hasta aquí con
+  // setState/callbacks en cada toque o cada tecla (que redibujaría toda la
+  // pantalla, incluida la propia sección de cada uno, en cada cambio). Cada
+  // sección sigue siendo dueña de su propio estado; esto solo permite
+  // "leerlo" bajo demanda, una sola vez, cuando realmente hace falta.
+  final _deletreoKey = GlobalKey<_SeccionDeletreoState>();
+  final _oracionKey = GlobalKey<_SeccionOracionState>();
 
   // RF-19/RF-20/RNF-04: _inicioCronometro es la única fuente de verdad (no
   // un contador de segundos incrementado por tick) — cada tick recalcula
@@ -161,9 +172,16 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     _tickerCronometro?.cancel();
     setState(() => _practicaTerminada = true);
 
+    final tiempoSegundos = _tiempoTranscurrido.inSeconds;
+
     // RF-22: la comparación es "best effort" — el tiempo ya quedó fijo y
     // registrado en pantalla (RF-21) sin importar si esto falla; solo el
     // mensaje motivacional depende de la red.
+    //
+    // IMPORTANTE: esta consulta debe ir ANTES de guardarPractica() de abajo,
+    // nunca después — ver el comentario en PracticaService.obtenerMejorTiempo
+    // (backend). Si el intento de HOY ya estuviera guardado, el propio
+    // registro se colaría en el cálculo del "mejor tiempo PREVIO".
     try {
       final mejorPrevio = await _practicaService.obtenerMejorTiempoSegundos(
         widget.idPalabra,
@@ -172,7 +190,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
       if (!mounted) return;
       setState(() {
         _mensajeMotivacional = construirMensajeMotivacional(
-          actualSegundos: _tiempoTranscurrido.inSeconds,
+          actualSegundos: tiempoSegundos,
           mejorPrevioSegundos: mejorPrevio,
         );
       });
@@ -181,6 +199,31 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('No se pudo cargar tu comparación con tu mejor tiempo.'),
+        ),
+      );
+    }
+
+    // RF-21/RF-27 (T-045): igual que la comparación de arriba, "best
+    // effort" — el tiempo mostrado en pantalla (RF-21) ya quedó fijo sin
+    // importar si esto falla. deletreo_correcto/oracion_alumno se leen tal
+    // como están AHORA MISMO en cada sección, sin exigir que el alumno haya
+    // verificado el deletreo ni escrito nada en la oración (T-043/T-044 no
+    // bloquean el avance por ninguna de las dos razones).
+    try {
+      await _practicaService.guardarPractica(
+        idPalabra: widget.idPalabra,
+        tiempoSegundos: tiempoSegundos,
+        oracionAlumno: _oracionKey.currentState?.texto ?? '',
+        deletreoCorrecto: _deletreoKey.currentState?.esCorrecto ?? false,
+        token: widget.token,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo guardar tu práctica. Revisa tu conexión e inténtalo de nuevo.',
+          ),
         ),
       );
     }
@@ -297,11 +340,17 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                       const SizedBox(height: 32),
                       const Divider(),
                       const SizedBox(height: 16),
-                      _SeccionDeletreo(palabraTexto: palabra.texto),
+                      _SeccionDeletreo(
+                        key: _deletreoKey,
+                        palabraTexto: palabra.texto,
+                      ),
                       const SizedBox(height: 32),
                       const Divider(),
                       const SizedBox(height: 16),
-                      _SeccionOracion(palabraTexto: palabra.texto),
+                      _SeccionOracion(
+                        key: _oracionKey,
+                        palabraTexto: palabra.texto,
+                      ),
                       const SizedBox(height: 16),
                       const Divider(),
                       const SizedBox(height: 16),
@@ -598,7 +647,7 @@ class _BotonPista extends StatelessWidget {
 /// T-030, este bloque no revisa `_cronometroIniciado` — el cronómetro solo
 /// mide el tiempo total, no impone una secuencia obligatoria de pasos.
 class _SeccionDeletreo extends StatefulWidget {
-  const _SeccionDeletreo({required this.palabraTexto});
+  const _SeccionDeletreo({super.key, required this.palabraTexto});
 
   final String palabraTexto;
 
@@ -614,6 +663,14 @@ class _SeccionDeletreoState extends State<_SeccionDeletreo> {
   /// null: todavía no se ha verificado (o la disposición cambió desde la
   /// última verificación). true/false: resultado de la última verificación.
   bool? _esCorrecto;
+
+  /// Leído por _PracticaPalabraScreenState al presionar "Terminé" (T-045,
+  /// vía GlobalKey) para el campo deletreo_correcto de POST /practica. Si el
+  /// alumno nunca llegó a verificar (o verificó y le quedó mal), el valor
+  /// honesto es `false`: no se confirmó un deletreo correcto, sin importar
+  /// la razón — la columna en base de datos es un booleano no-nulo, no hay
+  /// un tercer estado que guardar.
+  bool get esCorrecto => _esCorrecto == true;
 
   @override
   void initState() {
@@ -785,7 +842,7 @@ class _FichaVacia extends StatelessWidget {
 /// jamás impida seguir escribiendo o continuar con el resto de la
 /// pantalla). Igual que el deletreo, no depende del cronómetro.
 class _SeccionOracion extends StatefulWidget {
-  const _SeccionOracion({required this.palabraTexto});
+  const _SeccionOracion({super.key, required this.palabraTexto});
 
   final String palabraTexto;
 
@@ -812,6 +869,13 @@ class _SeccionOracionState extends State<_SeccionOracion> {
     _controlador.dispose();
     super.dispose();
   }
+
+  /// Leído por _PracticaPalabraScreenState al presionar "Terminé" (T-045,
+  /// vía GlobalKey) para el campo oracion_alumno de POST /practica — el
+  /// texto tal cual lo dejó el alumno, con o sin la palabra, con o sin
+  /// aviso visible: eso es responsabilidad del profesor al revisarla
+  /// (RF-26), no algo que esta pantalla decida filtrar antes de guardar.
+  String get texto => _controlador.text;
 
   // "de al menos 1 carácter": un campo vacío (o solo espacios) todavía no
   // es un intento de oración, así que no amerita ningún aviso — recién

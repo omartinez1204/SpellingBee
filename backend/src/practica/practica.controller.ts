@@ -1,14 +1,16 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard, type JwtPayload } from '../auth/guards/jwt-auth.guard.js';
+import { GuardarPracticaDto } from './dto/guardar-practica.dto.js';
 import { PracticaService } from './practica.service.js';
 
-// RF-22 (T-042). No es una ruta /admin/* ni usa @ValidarPropioAlumno: no
-// recibe ningún id de alumno por parámetro — siempre contesta sobre EL
-// PROPIO alumno de la sesión (usuario.sub), así que RolesGuard (global) no
-// tendría nada que validar aquí por su cuenta. @UseGuards(JwtAuthGuard) es
-// necesario para que exista sesión y @CurrentUser() tenga qué leer — mismo
-// patrón que PATCH /auth/cambiar-password.
+// RF-21/RF-22/RF-27 (T-042/T-045). Ninguna ruta de este controlador es
+// /admin/* ni usa @ValidarPropioAlumno: ninguna recibe un id de alumno por
+// parámetro — ambas actúan siempre sobre EL PROPIO alumno de la sesión
+// (usuario.sub), así que RolesGuard (global) no tendría nada que validar
+// aquí por su cuenta. @UseGuards(JwtAuthGuard) es necesario para que exista
+// sesión y @CurrentUser() tenga qué leer — mismo patrón que PATCH
+// /auth/cambiar-password.
 @Controller('practica')
 export class PracticaController {
   constructor(private readonly practicaService: PracticaService) {}
@@ -20,5 +22,16 @@ export class PracticaController {
     @CurrentUser() usuario: JwtPayload,
   ) {
     return this.practicaService.obtenerMejorTiempo(usuario.sub, idPalabra);
+  }
+
+  // RF-21, RF-27 (T-045). Sin @HttpCode: el default de @Post() (201) es
+  // correcto — esto sí crea un recurso nuevo, a diferencia de /auth/login.
+  @Post()
+  @UseGuards(JwtAuthGuard)
+  guardarPractica(
+    @CurrentUser() usuario: JwtPayload,
+    @Body() dto: GuardarPracticaDto,
+  ) {
+    return this.practicaService.guardarPractica(usuario.sub, dto);
   }
 }

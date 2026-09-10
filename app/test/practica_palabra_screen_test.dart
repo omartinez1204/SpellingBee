@@ -13,18 +13,47 @@ import 'package:spelling_bee/screens/practica_palabra_screen.dart';
 // Sin librería de mocking: un http.Client falso que regresa una respuesta
 // fija, igual de simple que el _AlmacenDePruebaEnMemoria de
 // auth_controller_test.dart pero para el cliente HTTP en vez del storage.
+//
+// T-045: además GRABA cada petición enviada (método + cuerpo decodificado),
+// para que las pruebas de guardarPractica() puedan verificar qué mandó
+// realmente la pantalla a POST /practica sin necesitar un backend de verdad.
 class _ClienteHttpDePrueba extends http.BaseClient {
   _ClienteHttpDePrueba(this._respuesta, {this.statusCode = 200});
 
   final Map<String, dynamic> _respuesta;
   final int statusCode;
+  final List<http.Request> peticiones = [];
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request is http.Request) peticiones.add(request);
     final cuerpo = utf8.encode(jsonEncode(_respuesta));
     return http.StreamedResponse(
       Stream.value(cuerpo),
       statusCode,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+// T-045: variante que distingue GET de POST — necesaria para probar "la
+// comparación con el mejor tiempo funciona bien, pero GUARDAR falla" (o
+// viceversa) sin que ambas peticiones compartan el mismo resultado, algo
+// que _ClienteHttpDePrueba no puede expresar al regresar siempre la misma
+// respuesta sin importar qué se le pida.
+class _ClienteHttpQueFallaSoloEnPost extends http.BaseClient {
+  final List<http.Request> peticiones = [];
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request is http.Request) peticiones.add(request);
+    if (request.method == 'POST') {
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+    }
+    final cuerpo = utf8.encode(jsonEncode({'mejor_tiempo_segundos': null}));
+    return http.StreamedResponse(
+      Stream.value(cuerpo),
+      200,
       headers: {'content-type': 'application/json'},
     );
   }
@@ -1541,6 +1570,208 @@ void main() {
 
         expect(find.textContaining('Todavía no incluye'), findsNothing);
         expect(find.widgetWithText(FilledButton, 'Iniciar'), findsOneWidget);
+      },
+    );
+  });
+
+  group('guardado de la práctica (T-045)', () {
+    Future<void> completarDeletreoCorrecto(WidgetTester tester) async {
+      for (var i = 0; i < 'business'.length; i++) {
+        await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+      }
+      await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+    }
+
+    testWidgets(
+      'RF-21/RF-27: al presionar Terminé, guarda id_palabra, tiempo, oración y resultado del deletreo tal como quedaron',
+      (tester) async {
+        final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(
+          apiClient: ApiClient(httpClient: clientePalabras),
+        );
+        final clientePractica = _ClienteHttpDePrueba({'mejor_tiempo_segundos': null});
+        final practicaService = PracticaService(
+          apiClient: ApiClient(httpClient: clientePractica),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await completarDeletreoCorrecto(tester);
+        await tester.enterText(find.byType(TextField), 'I run my own business.');
+        await tester.pump();
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        for (var i = 0; i < 5; i++) {
+          reloj.avanzar(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        final peticionesPost = clientePractica.peticiones.where(
+          (p) => p.method == 'POST',
+        );
+        expect(peticionesPost, hasLength(1));
+        final cuerpo = jsonDecode(peticionesPost.single.body) as Map<String, dynamic>;
+        expect(cuerpo, {
+          'id_palabra': 1,
+          'tiempo_segundos': 5,
+          'oracion_alumno': 'I run my own business.',
+          'deletreo_correcto': true,
+        });
+        expect(
+          peticionesPost.single.headers['Authorization'],
+          'Bearer token-de-prueba',
+        );
+      },
+    );
+
+    testWidgets(
+      'si nunca se tocó el deletreo ni se escribió nada, guarda deletreo_correcto=false y oracion_alumno vacía (RF-25/RF-26 no bloquean)',
+      (tester) async {
+        final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(
+          apiClient: ApiClient(httpClient: clientePalabras),
+        );
+        final clientePractica = _ClienteHttpDePrueba({'mejor_tiempo_segundos': null});
+        final practicaService = PracticaService(
+          apiClient: ApiClient(httpClient: clientePractica),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        reloj.avanzar(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 2));
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        final peticionesPost = clientePractica.peticiones.where(
+          (p) => p.method == 'POST',
+        );
+        final cuerpo = jsonDecode(peticionesPost.single.body) as Map<String, dynamic>;
+        expect(cuerpo, {
+          'id_palabra': 1,
+          'tiempo_segundos': 2,
+          'oracion_alumno': '',
+          'deletreo_correcto': false,
+        });
+      },
+    );
+
+    testWidgets(
+      'si el deletreo se verificó pero quedó incorrecto, guarda deletreo_correcto=false',
+      (tester) async {
+        final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(
+          apiClient: ApiClient(httpClient: clientePalabras),
+        );
+        final clientePractica = _ClienteHttpDePrueba({'mejor_tiempo_segundos': null});
+        final practicaService = PracticaService(
+          apiClient: ApiClient(httpClient: clientePractica),
+        );
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Orden deliberadamente incorrecto (mismo patrón que T-043).
+        for (final i in [1, 0, 2, 3, 4, 5, 6, 7]) {
+          await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+        }
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+        expect(find.textContaining('Todavía no es el orden correcto'), findsOneWidget);
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        final peticionesPost = clientePractica.peticiones.where(
+          (p) => p.method == 'POST',
+        );
+        final cuerpo = jsonDecode(peticionesPost.single.body) as Map<String, dynamic>;
+        expect(cuerpo['deletreo_correcto'], isFalse);
+      },
+    );
+
+    testWidgets(
+      'si falla el guardado, avisa sin tronar y no pierde el tiempo ni el mensaje motivacional ya mostrados',
+      (tester) async {
+        final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(
+          apiClient: ApiClient(httpClient: clientePalabras),
+        );
+        final practicaService = PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteHttpQueFallaSoloEnPost()),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        reloj.avanzar(const Duration(seconds: 3));
+        await tester.pump(const Duration(seconds: 3));
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        // RF-22 sí funcionó (el GET no falla en este falso) — RF-21/RF-27
+        // fallar no debe arrastrar consigo lo que ya funcionó.
+        expect(find.textContaining('primer intento'), findsOneWidget);
+        expect(
+          find.text(
+            'No se pudo guardar tu práctica. Revisa tu conexión e inténtalo de nuevo.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('00:03'), findsOneWidget);
       },
     );
   });
