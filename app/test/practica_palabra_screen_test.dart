@@ -122,6 +122,18 @@ class _ReproductorFalso implements ReproductorAudio {
   void simularFinNatural() => _controlador.add(EstadoAudio.detenido);
 }
 
+// T-040: reloj falso — DateTime.now() no obedece tester.pump(duration) (a
+// diferencia de los Timer, que sí corren sobre el reloj virtual de las
+// pruebas de widgets), así que sin este control manual no habría forma
+// determinista de probar RF-20/RNF-04.
+class _RelojFalso {
+  DateTime _actual = DateTime(2026);
+
+  DateTime ahora() => _actual;
+
+  void avanzar(Duration d) => _actual = _actual.add(d);
+}
+
 Widget _envolver(Widget child) =>
     MaterialApp(home: child, debugShowCheckedModeBanner: false);
 
@@ -753,6 +765,203 @@ void main() {
         // retroceder/adelantar/detener) — no queda un "00:09" fantasma.
         expect(find.byType(LinearProgressIndicator), findsNothing);
         expect(find.textContaining('00:09'), findsNothing);
+      },
+    );
+  });
+
+  group('cronómetro de práctica (T-040/T-041)', () {
+    testWidgets(
+      'RF-19: antes de iniciar, se ve fijo en 00:00 con el botón visible',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('00:00'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-19: al presionar Iniciar, el botón desaparece y el cronómetro sigue en 00:00 hasta el primer tick',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsNothing);
+        expect(find.text('00:00'), findsOneWidget);
+
+        // Limpieza: cancela el Timer.periodic antes de que termine la
+        // prueba (pumpAndSettle nunca "asienta" con un periodic corriendo).
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'RF-20: el valor en pantalla avanza al menos una vez por segundo mientras corre',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+
+        for (final esperado in ['00:01', '00:02', '00:03']) {
+          reloj.avanzar(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+          expect(find.text(esperado), findsOneWidget);
+        }
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      },
+    );
+
+    testWidgets(
+      'al salir de la pantalla con el cronómetro corriendo, se cancela sin error',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        reloj.avanzar(const Duration(seconds: 1));
+        await tester.pump(const Duration(seconds: 1));
+
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'RF-21: "Terminé" solo aparece mientras el cronómetro está corriendo',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Antes de iniciar: ni siquiera existe.
+        expect(find.widgetWithText(FilledButton, 'Terminé'), findsNothing);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        expect(find.widgetWithText(FilledButton, 'Terminé'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
+
+        // Después de terminar: tampoco — ya no hay nada más que detener.
+        expect(find.widgetWithText(FilledButton, 'Terminé'), findsNothing);
+        expect(find.widgetWithText(FilledButton, 'Iniciar'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'RF-21: al presionar Terminé, el cronómetro se detiene y el tiempo queda fijo',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        for (var i = 0; i < 3; i++) {
+          reloj.avanzar(const Duration(seconds: 1));
+          await tester.pump(const Duration(seconds: 1));
+        }
+        expect(find.text('00:03'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
+        expect(find.text('00:03'), findsOneWidget);
+
+        // El reloj sigue avanzando en el mundo real, pero sin el ticker
+        // corriendo el valor mostrado ya no debe moverse — si esto fallara
+        // (el Timer no se canceló), tester.pump(duration) con un periodic
+        // vivo también dejaría un Timer pendiente al final de la prueba.
+        reloj.avanzar(const Duration(seconds: 5));
+        await tester.pump(const Duration(seconds: 5));
+        expect(find.text('00:03'), findsOneWidget);
+        expect(find.text('00:08'), findsNothing);
       },
     );
   });

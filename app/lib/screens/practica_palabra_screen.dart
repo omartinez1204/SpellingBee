@@ -9,16 +9,22 @@ import '../core/palabras_service.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
 
-/// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032): pantalla de práctica
-/// de UNA palabra. Muestra de inmediato y de forma visible solo la palabra
-/// en inglés y un ícono de audio; significado y oración de ejemplo quedan
-/// ocultos al inicio, disponibles mediante dos botones de pista que el
-/// alumno activa voluntariamente. El ícono de audio reproduce/pausa/reanuda
-/// (RF-12/13); retroceder/adelantar 5s (RF-14/15), detener (RF-16) y la
-/// barra de progreso + texto mm:ss (RF-18) aparecen mientras hay algo sobre
-/// lo que actuar (reproduciendo o pausada). No hay límite de reproducciones
-/// (RF-17): terminar o detener deja la pista lista para volver a tocarse
-/// desde el inicio.
+/// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032) + RF-19 a RF-21
+/// (T-040/T-041): pantalla de práctica de UNA palabra. Muestra de inmediato
+/// y de forma visible solo la palabra en inglés y un ícono de audio;
+/// significado y oración de ejemplo quedan ocultos al inicio, disponibles
+/// mediante dos botones de pista que el alumno activa voluntariamente. El
+/// ícono de audio reproduce/pausa/reanuda (RF-12/13); retroceder/adelantar
+/// 5s (RF-14/15), detener (RF-16) y la barra de progreso + texto mm:ss
+/// (RF-18) aparecen mientras hay algo sobre lo que actuar (reproduciendo o
+/// pausada). No hay límite de reproducciones (RF-17): terminar o detener
+/// deja la pista lista para volver a tocarse desde el inicio. Debajo, un
+/// cronómetro único para toda la práctica de la palabra permanece en 00:00
+/// hasta que el alumno presiona "Iniciar"; a partir de ahí corre solo,
+/// actualizándose cada segundo, hasta que presiona "Terminé", que lo
+/// detiene y fija el tiempo final (RF-21) — guardar ese tiempo en el
+/// backend (T-045) y mostrar el mensaje motivacional (T-042) quedan fuera
+/// de esta pantalla todavía.
 ///
 /// [DISEÑO PROPUESTO POR EL EQUIPO, NO INSTRUCCIÓN LITERAL DEL CLIENTE — ver
 /// ERS §8.2 y docs/backlog.md "Bloqueadores": confirmar con el cliente
@@ -30,6 +36,7 @@ class PracticaPalabraScreen extends StatefulWidget {
     required this.idPalabra,
     this.palabrasService,
     this.reproductor,
+    this.ahora,
   });
 
   final int idPalabra;
@@ -41,6 +48,12 @@ class PracticaPalabraScreen extends StatefulWidget {
   /// `flutter test`.
   final ReproductorAudio? reproductor;
 
+  /// Inyectable solo para pruebas (T-040): DateTime.now() no avanza con
+  /// tester.pump(duration) — a diferencia de los Timer, que sí obedecen el
+  /// reloj falso de las pruebas de widgets — así que sin este seam no habría
+  /// forma determinista de probar RF-20/RNF-04 bajo `flutter test`.
+  final DateTime Function()? ahora;
+
   @override
   State<PracticaPalabraScreen> createState() => _PracticaPalabraScreenState();
 }
@@ -48,6 +61,7 @@ class PracticaPalabraScreen extends StatefulWidget {
 class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   late final PalabrasService _palabrasService;
   late final ReproductorAudio _reproductor;
+  late final DateTime Function() _ahora;
   late final StreamSubscription<EstadoAudio> _suscripcionAudio;
   late final StreamSubscription<Duration> _suscripcionPosicion;
   late final StreamSubscription<Duration?> _suscripcionDuracion;
@@ -59,11 +73,25 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   Duration _posicion = Duration.zero;
   Duration? _duracion;
 
+  // RF-19/RF-20/RNF-04: _inicioCronometro es la única fuente de verdad (no
+  // un contador de segundos incrementado por tick) — cada tick recalcula
+  // contra el reloj real, así que un tick que llega tarde (frame perdido,
+  // GC) nunca se acumula como desviación: el peor caso es que el valor en
+  // pantalla se quede fijo un instante extra, nunca que quede adelantado o
+  // atrasado respecto al tiempo real transcurrido.
+  DateTime? _inicioCronometro;
+  Duration _tiempoTranscurrido = Duration.zero;
+  Timer? _tickerCronometro;
+  bool _practicaTerminada = false;
+
+  bool get _cronometroIniciado => _inicioCronometro != null;
+
   @override
   void initState() {
     super.initState();
     _palabrasService = widget.palabrasService ?? PalabrasService();
     _reproductor = widget.reproductor ?? ReproductorAudioJustAudio();
+    _ahora = widget.ahora ?? DateTime.now;
     _futuraPalabra = _palabrasService.obtenerDetalle(widget.idPalabra);
     _suscripcionAudio = _reproductor.estado.listen((estado) {
       if (!mounted) return;
@@ -84,11 +112,40 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     });
   }
 
+  // RF-19: acción explícita y única — "es el alumno quien decide cuándo
+  // empezar". El guard evita que un doble toque (o cualquier otra llamada
+  // futura) reinicie un cronómetro que ya corre.
+  void _iniciarCronometro() {
+    if (_cronometroIniciado) return;
+    setState(() {
+      _inicioCronometro = _ahora();
+      _tiempoTranscurrido = Duration.zero;
+    });
+    _tickerCronometro = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() => _tiempoTranscurrido = _ahora().difference(_inicioCronometro!));
+    });
+  }
+
+  // RF-21. Deliberadamente NO vuelve a calcular _ahora().difference(...) —
+  // el criterio de aceptación exige que "el tiempo final registrado
+  // coincide con el mostrado en pantalla al momento de marcar Terminé", y
+  // recalcular podría adelantar el valor uno o dos décimos de segundo más
+  // allá de lo que el alumno alcanzó a ver en el último tick. Cancelar el
+  // ticker sin tocar _tiempoTranscurrido deja fijo exactamente ese último
+  // valor mostrado.
+  void _terminarPractica() {
+    if (!_cronometroIniciado || _practicaTerminada) return;
+    _tickerCronometro?.cancel();
+    setState(() => _practicaTerminada = true);
+  }
+
   @override
   void dispose() {
     _suscripcionAudio.cancel();
     _suscripcionPosicion.cancel();
     _suscripcionDuracion.cancel();
+    _tickerCronometro?.cancel();
     unawaited(_reproductor.dispose());
     super.dispose();
   }
@@ -190,6 +247,16 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                         visible: _oracionVisible,
                         onPresionar: () =>
                             setState(() => _oracionVisible = true),
+                      ),
+                      const SizedBox(height: 32),
+                      const Divider(),
+                      const SizedBox(height: 16),
+                      _SeccionCronometro(
+                        iniciado: _cronometroIniciado,
+                        terminado: _practicaTerminada,
+                        tiempoTranscurrido: _tiempoTranscurrido,
+                        onIniciar: _iniciarCronometro,
+                        onTerminar: _terminarPractica,
                       ),
                     ],
                   ),
@@ -297,6 +364,60 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     } catch (_) {
       // Ver comentario arriba.
     }
+  }
+}
+
+/// RF-19/RF-20 (T-040) + RF-21 (T-041): cronómetro único y combinado para
+/// toda la práctica de la palabra (pronunciación, deletreo y oración
+/// juntos) — no uno por sub-actividad, así que vive aquí, al nivel de la
+/// pantalla completa, y no dentro de ningún widget de una sub-actividad en
+/// particular. Antes de iniciar se ve fijo en 00:00 (no un campo vacío ni
+/// oculto); el botón "Iniciar" desaparece una vez iniciado porque es una
+/// acción única, no reiniciable (RF-19: "es el alumno quien decide cuándo
+/// empezar"). "Terminé" solo tiene sentido mientras corre; al presionarlo
+/// desaparece también — no hay forma de "reabrir" el cronómetro de esta
+/// pantalla (eso, si hiciera falta, sería una palabra nueva, no la misma
+/// práctica).
+class _SeccionCronometro extends StatelessWidget {
+  const _SeccionCronometro({
+    required this.iniciado,
+    required this.terminado,
+    required this.tiempoTranscurrido,
+    required this.onIniciar,
+    required this.onTerminar,
+  });
+
+  final bool iniciado;
+  final bool terminado;
+  final Duration tiempoTranscurrido;
+  final VoidCallback onIniciar;
+  final VoidCallback onTerminar;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(
+          formatearTiempo(tiempoTranscurrido),
+          style: Theme.of(context).textTheme.displaySmall,
+        ),
+        const SizedBox(height: 12),
+        if (!iniciado)
+          FilledButton.icon(
+            onPressed: onIniciar,
+            // No Icons.play_arrow: ese ya lo usa "reanudar" del reproductor
+            // de audio (RF-13), visible al mismo tiempo que este botón.
+            icon: const Icon(Icons.timer),
+            label: const Text('Iniciar'),
+          )
+        else if (!terminado)
+          FilledButton.icon(
+            onPressed: onTerminar,
+            icon: const Icon(Icons.check),
+            label: const Text('Terminé'),
+          ),
+      ],
+    );
   }
 }
 
