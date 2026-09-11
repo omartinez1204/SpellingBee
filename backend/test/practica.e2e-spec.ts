@@ -276,10 +276,16 @@ describe('PracticaController (e2e) - POST /practica', () => {
     await prisma.palabra.deleteMany({
       where: { texto: { startsWith: PREFIJO_PRUEBA } },
     });
-    // T-046: guardarPractica() ahora también escribe Racha (RF-23) como
-    // efecto del guardado — sin borrarla aquí, la siguiente corrida choca
-    // con la restricción de llave foránea al intentar borrar el usuario.
+    // T-046/T-047: guardarPractica() ahora también escribe Racha (RF-23) e
+    // Insignia (RF-24) como efecto del guardado — sin borrarlas aquí, la
+    // siguiente corrida choca con la restricción de llave foránea al
+    // intentar borrar el usuario. Ninguna palabra de este archivo es
+    // "completa" (T-022), así que hoy nunca se crea una Insignia real aquí
+    // — se limpia de todos modos por si algo cambia más adelante.
     await prisma.racha.deleteMany({
+      where: { alumno: { nombreUsuario: USUARIO_ALUMNO } },
+    });
+    await prisma.insignia.deleteMany({
       where: { alumno: { nombreUsuario: USUARIO_ALUMNO } },
     });
     await prisma.perfilAlumno.deleteMany({
@@ -309,7 +315,7 @@ describe('PracticaController (e2e) - POST /practica', () => {
       .send(cuerpoValido())
       .expect(201);
 
-    expect(respuesta.body).toEqual({ id: expect.any(Number) });
+    expect(respuesta.body).toEqual({ id: expect.any(Number), insignia_otorgada: null });
 
     const guardado = await prisma.registroPractica.findUnique({
       where: { id: respuesta.body.id },

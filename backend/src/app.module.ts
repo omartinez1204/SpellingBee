@@ -4,6 +4,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { RolesGuard } from './auth/guards/roles.guard.js';
+import { InsigniasModule } from './insignias/insignias.module.js';
 import { NivelesModule } from './niveles/niveles.module.js';
 import { PalabrasModule } from './palabras/palabras.module.js';
 import { PracticaModule } from './practica/practica.module.js';
@@ -18,6 +19,7 @@ import { RachaModule } from './racha/racha.module.js';
     PalabrasModule,
     PracticaModule,
     RachaModule,
+    InsigniasModule,
   ],
   controllers: [AppController],
   providers: [

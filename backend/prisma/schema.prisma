@@ -46,6 +46,7 @@ model Usuario {
   registrosPractica RegistroPractica[]
   racha             Racha?
   palabrasCreadas   Palabra[]
+  insignias         Insignia[]
 
   @@map("usuarios")
 }
@@ -68,7 +69,8 @@ model Nivel {
   nombre String // "Fácil" | "Intermedio" | "Difícil"
   orden  Int
 
-  palabras Palabra[]
+  palabras  Palabra[]
+  insignias Insignia[]
 
   @@map("niveles")
 }
@@ -126,4 +128,21 @@ model Racha {
   alumno Usuario @relation(fields: [idAlumno], references: [id])
 
   @@map("rachas")
+}
+
+// RF-24 (T-047). Permanente: una vez creada, nunca se borra ni se
+// recalcula — ver la nota de RF-09 en el ERS ("ningún cambio de nivel de
+// una palabra revoca una insignia ya obtenida"). La clave compuesta
+// (idAlumno, idNivel) es a la vez la PK y lo que garantiza como invariante
+// de esquema que un alumno no puede tener dos insignias del mismo nivel.
+model Insignia {
+  idAlumno      Int      @map("id_alumno")
+  idNivel       Int      @map("id_nivel")
+  fechaOtorgada DateTime @default(now()) @map("fecha_otorgada")
+
+  alumno Usuario @relation(fields: [idAlumno], references: [id])
+  nivel  Nivel   @relation(fields: [idNivel], references: [id])
+
+  @@id([idAlumno, idNivel])
+  @@map("insignias")
 }

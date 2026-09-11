@@ -1143,6 +1143,97 @@ void main() {
     );
 
     testWidgets(
+      'RF-24: si POST /practica indica que se otorgó una insignia, muestra un diálogo emergente de felicitación',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final practicaService = PracticaService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba({
+              'mejor_tiempo_segundos': null,
+              'insignia_otorgada': {
+                'id_nivel': 1,
+                'nombre_nivel': 'Fácil',
+                'fecha_otorgada': '2026-01-01T00:00:00.000Z',
+              },
+            }),
+          ),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('¡Felicidades!'), findsOneWidget);
+        expect(find.textContaining('Fácil'), findsOneWidget);
+
+        // El diálogo se puede cerrar y no deja nada pendiente.
+        await tester.tap(find.widgetWithText(FilledButton, 'Aceptar'));
+        await tester.pumpAndSettle();
+        expect(find.text('¡Felicidades!'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'si POST /practica no otorga ninguna insignia (insignia_otorgada ausente), no muestra ningún diálogo',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final practicaService = PracticaService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba({'mejor_tiempo_segundos': null}),
+          ),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        await tester.tap(find.widgetWithText(FilledButton, 'Iniciar'));
+        await tester.pump();
+        await tester.ensureVisible(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pump();
+        await tester.tap(find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('¡Felicidades!'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'si falla la consulta de mejor tiempo, avisa sin tronar y el tiempo ya fijado no se pierde',
       (tester) async {
         final cliente = _ClienteHttpDePrueba(_palabraConAudio);

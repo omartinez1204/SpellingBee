@@ -99,6 +99,14 @@ describe('RachaController (e2e) - GET /racha + racha vía POST /practica', () =>
         alumno: { nombreUsuario: { in: [USUARIO_ALUMNO, USUARIO_OTRO_ALUMNO] } },
       },
     });
+    // T-047: por si acaso, igual que en practica.e2e-spec.ts — la palabra de
+    // este archivo nunca es "completa", así que hoy nunca se otorga una
+    // insignia real aquí.
+    await prisma.insignia.deleteMany({
+      where: {
+        alumno: { nombreUsuario: { in: [USUARIO_ALUMNO, USUARIO_OTRO_ALUMNO] } },
+      },
+    });
     await prisma.perfilAlumno.deleteMany({
       where: {
         usuario: { nombreUsuario: { in: [USUARIO_ALUMNO, USUARIO_OTRO_ALUMNO] } },

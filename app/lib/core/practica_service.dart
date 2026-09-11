@@ -1,5 +1,6 @@
 import 'api_client.dart';
 import 'fecha_local.dart';
+import 'insignia.dart';
 
 /// RF-22 (T-042): GET /practica/mejor-tiempo/:idPalabra. Autenticado — el
 /// backend responde sobre EL PROPIO alumno de la sesión (no hay id de
@@ -32,15 +33,19 @@ class PracticaService {
   /// `.toUtc()`: eso podría cambiar de día cerca de medianoche y sería
   /// exactamente la zona horaria equivocada — RF-23 es explícito en que
   /// debe ser la del dispositivo, no la de un servidor ni la de UTC).
-  Future<void> guardarPractica({
+  ///
+  /// Regresa la insignia (RF-24, T-047) si ESTE intento fue el que completó
+  /// el 100% del nivel, o null si no otorgó ninguna (ya la tenía de antes,
+  /// o todavía falta alguna palabra).
+  Future<Insignia?> guardarPractica({
     required int idPalabra,
     required int tiempoSegundos,
     required String oracionAlumno,
     required bool deletreoCorrecto,
     required DateTime fechaLocal,
     required String token,
-  }) {
-    return _api.post(
+  }) async {
+    final json = await _api.post(
       '/practica',
       {
         'id_palabra': idPalabra,
@@ -51,5 +56,7 @@ class PracticaService {
       },
       token: token,
     );
+    final insigniaJson = json['insignia_otorgada'] as Map<String, dynamic>?;
+    return insigniaJson == null ? null : Insignia.desdeJson(insigniaJson);
   }
 }

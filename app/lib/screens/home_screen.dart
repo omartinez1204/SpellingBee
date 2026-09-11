@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/auth_controller.dart';
 import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
+import 'perfil_progreso_screen.dart';
 
 /// Placeholder: el catálogo/práctica del alumno todavía no tiene pantalla
 /// propia en el backlog (T-026 es solo la práctica de una palabra ya
@@ -45,6 +46,19 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Text('Administrar catálogo'),
+                ),
+                const SizedBox(height: 12),
+              ] else ...[
+                // RF-24 (T-047): insignias por nivel completado — solo tiene
+                // sentido para el alumno, un profesor no practica palabras.
+                FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          PerfilProgresoScreen(token: sesion.token),
+                    ),
+                  ),
+                  child: const Text('Mi progreso'),
                 ),
                 const SizedBox(height: 12),
               ],

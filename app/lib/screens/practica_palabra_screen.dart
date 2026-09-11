@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/api_exception.dart';
 import '../core/detalle_palabra.dart';
 import '../core/formato_tiempo.dart';
+import '../core/insignia.dart';
 import '../core/mensaje_motivacional.dart';
 import '../core/palabras_service.dart';
 import '../core/practica_service.dart';
@@ -215,7 +216,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     // verificado el deletreo ni escrito nada en la oración (T-043/T-044 no
     // bloquean el avance por ninguna de las dos razones).
     try {
-      await _practicaService.guardarPractica(
+      final insigniaOtorgada = await _practicaService.guardarPractica(
         idPalabra: widget.idPalabra,
         tiempoSegundos: tiempoSegundos,
         oracionAlumno: _oracionKey.currentState?.texto ?? '',
@@ -223,6 +224,13 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
         fechaLocal: fechaLocalDeHoy,
         token: widget.token,
       );
+      if (!mounted) return;
+      // RF-24, punto 1 (T-047): mensaje emergente EN EL MOMENTO en que se
+      // completa el nivel — null significa que este intento no lo completó
+      // (ya tenía la insignia de antes, o todavía falta alguna palabra).
+      if (insigniaOtorgada != null) {
+        await _mostrarFelicitacionPorNivelCompletado(insigniaOtorgada);
+      }
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -233,6 +241,30 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
         ),
       );
     }
+  }
+
+  // RF-24, punto 1: "emergente" — un diálogo modal, no un texto embebido en
+  // la pantalla como el mensaje motivacional de RF-22. La insignia en sí
+  // (punto 2) ya quedó guardada en el backend por PracticaService; este
+  // diálogo solo avisa que acaba de pasar, no la otorga.
+  Future<void> _mostrarFelicitacionPorNivelCompletado(Insignia insignia) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.emoji_events, color: Colors.amber, size: 48),
+        title: const Text('¡Felicidades!'),
+        content: Text(
+          'Completaste el 100% de las palabras del nivel ${insignia.nombreNivel}. '
+          'Tu insignia ya está disponible en tu perfil.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Aceptar'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
