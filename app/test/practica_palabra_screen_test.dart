@@ -1631,6 +1631,10 @@ void main() {
           'tiempo_segundos': 5,
           'oracion_alumno': 'I run my own business.',
           'deletreo_correcto': true,
+          // RF-23 (T-046): _RelojFalso arranca en DateTime(2026), es decir
+          // 2026-01-01 — los pocos segundos que avanza el cronómetro en
+          // esta prueba nunca cruzan a un día distinto.
+          'fecha_local': '2026-01-01',
         });
         expect(
           peticionesPost.single.headers['Authorization'],
@@ -1681,7 +1685,54 @@ void main() {
           'tiempo_segundos': 2,
           'oracion_alumno': '',
           'deletreo_correcto': false,
+          'fecha_local': '2026-01-01',
         });
+      },
+    );
+
+    testWidgets(
+      'RF-23: fecha_local refleja el día calendario AL PRESIONAR TERMINÉ, no el día en que se presionó Iniciar',
+      (tester) async {
+        final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(
+          apiClient: ApiClient(httpClient: clientePalabras),
+        );
+        final clientePractica = _ClienteHttpDePrueba({'mejor_tiempo_segundos': null});
+        final practicaService = PracticaService(
+          apiClient: ApiClient(httpClient: clientePractica),
+        );
+        final reloj = _RelojFalso(); // arranca en 2026-01-01 00:00:00.
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        // Cruza la medianoche mientras el cronómetro sigue corriendo: para
+        // cuando se presione "Terminé", ya es 2026-01-02, no 2026-01-01.
+        reloj.avanzar(const Duration(hours: 23, minutes: 59, seconds: 59));
+        await tester.pump(const Duration(seconds: 1));
+        reloj.avanzar(const Duration(seconds: 2));
+        await tester.pump(const Duration(seconds: 1));
+
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        final peticionesPost = clientePractica.peticiones.where(
+          (p) => p.method == 'POST',
+        );
+        final cuerpo = jsonDecode(peticionesPost.single.body) as Map<String, dynamic>;
+        expect(cuerpo['fecha_local'], '2026-01-02');
       },
     );
 

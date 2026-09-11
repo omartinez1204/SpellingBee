@@ -276,6 +276,12 @@ describe('PracticaController (e2e) - POST /practica', () => {
     await prisma.palabra.deleteMany({
       where: { texto: { startsWith: PREFIJO_PRUEBA } },
     });
+    // T-046: guardarPractica() ahora también escribe Racha (RF-23) como
+    // efecto del guardado — sin borrarla aquí, la siguiente corrida choca
+    // con la restricción de llave foránea al intentar borrar el usuario.
+    await prisma.racha.deleteMany({
+      where: { alumno: { nombreUsuario: USUARIO_ALUMNO } },
+    });
     await prisma.perfilAlumno.deleteMany({
       where: { usuario: { nombreUsuario: USUARIO_ALUMNO } },
     });
@@ -290,6 +296,10 @@ describe('PracticaController (e2e) - POST /practica', () => {
     tiempo_segundos: 42,
     oracion_alumno: 'I will collect the mail today.',
     deletreo_correcto: true,
+    // T-046: fecha fija de prueba — la lógica de racha en sí (consecutiva,
+    // mismo día, con hueco) se prueba aparte en racha.e2e-spec.ts; aquí
+    // solo hace falta un valor válido para no romper la validación del DTO.
+    fecha_local: '2026-09-10',
   });
 
   it('RF-21/RF-27: guarda el registro y regresa 201 con un id', async () => {

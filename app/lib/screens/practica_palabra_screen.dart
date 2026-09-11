@@ -173,6 +173,11 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     setState(() => _practicaTerminada = true);
 
     final tiempoSegundos = _tiempoTranscurrido.inSeconds;
+    // RF-23 (T-046): la fecha calendario LOCAL en el momento de terminar —
+    // capturada una sola vez aquí (no de nuevo más abajo) para que el
+    // "día" de este intento sea uno solo, sin importar cuánto tarden de
+    // por medio las llamadas de red que siguen.
+    final fechaLocalDeHoy = _ahora();
 
     // RF-22: la comparación es "best effort" — el tiempo ya quedó fijo y
     // registrado en pantalla (RF-21) sin importar si esto falla; solo el
@@ -215,6 +220,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
         tiempoSegundos: tiempoSegundos,
         oracionAlumno: _oracionKey.currentState?.texto ?? '',
         deletreoCorrecto: _deletreoKey.currentState?.esCorrecto ?? false,
+        fechaLocal: fechaLocalDeHoy,
         token: widget.token,
       );
     } catch (_) {

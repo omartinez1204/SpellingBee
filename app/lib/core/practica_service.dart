@@ -1,4 +1,5 @@
 import 'api_client.dart';
+import 'fecha_local.dart';
 
 /// RF-22 (T-042): GET /practica/mejor-tiempo/:idPalabra. Autenticado — el
 /// backend responde sobre EL PROPIO alumno de la sesión (no hay id de
@@ -20,14 +21,23 @@ class PracticaService {
     return json['mejor_tiempo_segundos'] as int?;
   }
 
-  /// RF-21/RF-27 (T-045): POST /practica. Exactamente estos 4 campos, nunca
-  /// audio del alumno (RF-27/RF-40) — el backend además rechaza la petición
-  /// entera si trae cualquier campo fuera de estos.
+  /// RF-21/RF-23/RF-27 (T-045/T-046): POST /practica. Exactamente estos 5
+  /// campos, nunca audio del alumno (RF-27/RF-40) — el backend además
+  /// rechaza la petición entera si trae cualquier campo fuera de estos.
+  ///
+  /// `fechaLocal` es la fecha CALENDARIO LOCAL DEL DISPOSITIVO (RF-23), no
+  /// un instante — por eso se recibe ya como el DateTime completo (para no
+  /// obligar a quien llama a formatearlo) y aquí se manda solo su parte de
+  /// fecha ("YYYY-MM-DD"), en la hora/zona LOCAL de `fechaLocal` (nunca
+  /// `.toUtc()`: eso podría cambiar de día cerca de medianoche y sería
+  /// exactamente la zona horaria equivocada — RF-23 es explícito en que
+  /// debe ser la del dispositivo, no la de un servidor ni la de UTC).
   Future<void> guardarPractica({
     required int idPalabra,
     required int tiempoSegundos,
     required String oracionAlumno,
     required bool deletreoCorrecto,
+    required DateTime fechaLocal,
     required String token,
   }) {
     return _api.post(
@@ -37,6 +47,7 @@ class PracticaService {
         'tiempo_segundos': tiempoSegundos,
         'oracion_alumno': oracionAlumno,
         'deletreo_correcto': deletreoCorrecto,
+        'fecha_local': formatearFechaLocal(fechaLocal),
       },
       token: token,
     );

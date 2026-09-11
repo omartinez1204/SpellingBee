@@ -8,6 +8,7 @@ import { NivelesModule } from './niveles/niveles.module.js';
 import { PalabrasModule } from './palabras/palabras.module.js';
 import { PracticaModule } from './practica/practica.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { RachaModule } from './racha/racha.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     NivelesModule,
     PalabrasModule,
     PracticaModule,
+    RachaModule,
   ],
   controllers: [AppController],
   providers: [
