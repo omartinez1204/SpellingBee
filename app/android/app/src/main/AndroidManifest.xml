@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- T-048 (RF-40): grabación local y efímera de autopráctica ("Escúchate").
+         Sin este permiso, permission_handler nunca podría pedirlo en tiempo
+         de ejecución — Android exige declarar la intención en el manifest
+         además de solicitar el permiso al usuario. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- El backend (API_BASE_URL) es http:// sin TLS en todos los escenarios
          actuales: emulador (10.0.2.2), dispositivo físico en la misma red, o
          el servidor real todavía sin HTTPS configurado (ver

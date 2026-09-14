@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../core/api_exception.dart';
 import '../core/detalle_palabra.dart';
 import '../core/formato_tiempo.dart';
+import '../core/grabador_audio.dart';
+import '../core/grabador_audio_record.dart';
 import '../core/insignia.dart';
 import '../core/mensaje_motivacional.dart';
 import '../core/palabras_service.dart';
@@ -46,6 +48,8 @@ class PracticaPalabraScreen extends StatefulWidget {
     this.reproductor,
     this.ahora,
     this.practicaService,
+    this.grabadorDeletreo,
+    this.grabadorOracion,
   });
 
   final int idPalabra;
@@ -75,6 +79,15 @@ class PracticaPalabraScreen extends StatefulWidget {
   /// Inyectable solo para pruebas (T-042) — mismo motivo que
   /// palabrasService.
   final PracticaService? practicaService;
+
+  /// Inyectables solo para pruebas (T-048) — mismo motivo que reproductor:
+  /// sin esto, cada botón "Escúchate" (uno en la sección de deletreo, otro
+  /// en la de oración — ver _BotonEscuchate) siempre construiría un
+  /// GrabadorAudioRecord real, que necesita micrófono/canal de plataforma
+  /// inexistente bajo `flutter test`. Separados en dos porque son dos
+  /// grabaciones independientes (RF-40: "por separado").
+  final GrabadorAudio? grabadorDeletreo;
+  final GrabadorAudio? grabadorOracion;
 
   @override
   State<PracticaPalabraScreen> createState() => _PracticaPalabraScreenState();
@@ -381,6 +394,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                       _SeccionDeletreo(
                         key: _deletreoKey,
                         palabraTexto: palabra.texto,
+                        grabador: widget.grabadorDeletreo,
                       ),
                       const SizedBox(height: 32),
                       const Divider(),
@@ -388,6 +402,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
                       _SeccionOracion(
                         key: _oracionKey,
                         palabraTexto: palabra.texto,
+                        grabador: widget.grabadorOracion,
                       ),
                       const SizedBox(height: 16),
                       const Divider(),
@@ -685,9 +700,16 @@ class _BotonPista extends StatelessWidget {
 /// T-030, este bloque no revisa `_cronometroIniciado` — el cronómetro solo
 /// mide el tiempo total, no impone una secuencia obligatoria de pasos.
 class _SeccionDeletreo extends StatefulWidget {
-  const _SeccionDeletreo({super.key, required this.palabraTexto});
+  const _SeccionDeletreo({
+    super.key,
+    required this.palabraTexto,
+    this.grabador,
+  });
 
   final String palabraTexto;
+
+  /// T-048: ver PracticaPalabraScreen.grabadorDeletreo.
+  final GrabadorAudio? grabador;
 
   @override
   State<_SeccionDeletreo> createState() => _SeccionDeletreoState();
@@ -820,6 +842,8 @@ class _SeccionDeletreoState extends State<_SeccionDeletreo> {
             ),
           ),
         ],
+        const SizedBox(height: 12),
+        _BotonEscuchate(grabador: widget.grabador),
       ],
     );
   }
@@ -880,9 +904,16 @@ class _FichaVacia extends StatelessWidget {
 /// jamás impida seguir escribiendo o continuar con el resto de la
 /// pantalla). Igual que el deletreo, no depende del cronómetro.
 class _SeccionOracion extends StatefulWidget {
-  const _SeccionOracion({super.key, required this.palabraTexto});
+  const _SeccionOracion({
+    super.key,
+    required this.palabraTexto,
+    this.grabador,
+  });
 
   final String palabraTexto;
+
+  /// T-048: ver PracticaPalabraScreen.grabadorOracion.
+  final GrabadorAudio? grabador;
 
   @override
   State<_SeccionOracion> createState() => _SeccionOracionState();
@@ -960,7 +991,127 @@ class _SeccionOracionState extends State<_SeccionOracion> {
             ),
           ),
         ],
+        const SizedBox(height: 12),
+        _BotonEscuchate(grabador: widget.grabador),
       ],
+    );
+  }
+}
+
+enum _EstadoEscuchate { inactivo, grabando, reproduciendo }
+
+/// RF-40 (T-048): botón "Escúchate" — autopráctica local y efímera, ajena
+/// por completo al cronómetro/deletreo/oración que sí se guardan (RF-21,
+/// RF-25, RF-26). Aparece dos veces en esta pantalla (una en _SeccionDeletreo,
+/// otra en _SeccionOracion, ver CU-01 pasos 5 y 6 del ERS) — cada instancia
+/// es independiente: su propio GrabadorAudio, su propio ciclo grabar →
+/// reproducir → borrar, sin coordinación entre ambas.
+///
+/// El texto visible es literalmente "Escúchate" en las dos, tal como lo
+/// nombra el ERS ("un botón 'Escúchate'") — la posición en la pantalla
+/// (justo debajo de las fichas de deletreo, o justo debajo del campo de la
+/// oración) es lo que distingue cuál graba qué, no el texto del botón.
+class _BotonEscuchate extends StatefulWidget {
+  const _BotonEscuchate({this.grabador});
+
+  /// Inyectable solo para pruebas — mismo motivo que reproductor/
+  /// palabrasService en el resto de la pantalla: sin esto, el widget
+  /// siempre construiría un GrabadorAudioRecord real, que necesita
+  /// micrófono/canal de plataforma inexistente bajo `flutter test`.
+  final GrabadorAudio? grabador;
+
+  @override
+  State<_BotonEscuchate> createState() => _BotonEscuchateState();
+}
+
+class _BotonEscuchateState extends State<_BotonEscuchate> {
+  late final GrabadorAudio _grabador;
+  _EstadoEscuchate _estado = _EstadoEscuchate.inactivo;
+
+  @override
+  void initState() {
+    super.initState();
+    _grabador = widget.grabador ?? GrabadorAudioRecord();
+  }
+
+  @override
+  void dispose() {
+    // No se espera a que termine (dispose() no puede ser async) — igual que
+    // _reproductor.dispose() más arriba en esta pantalla. GrabadorAudio.
+    // dispose() ya se encarga de no dejar ningún archivo huérfano aunque el
+    // alumno haya salido de la pantalla a medio grabar.
+    unawaited(_grabador.dispose());
+    super.dispose();
+  }
+
+  Future<void> _alPresionar() async {
+    switch (_estado) {
+      case _EstadoEscuchate.inactivo:
+        await _iniciarGrabacion();
+      case _EstadoEscuchate.grabando:
+        await _detenerYReproducir();
+      case _EstadoEscuchate.reproduciendo:
+        break; // El botón está deshabilitado en este estado (ver build()).
+    }
+  }
+
+  Future<void> _iniciarGrabacion() async {
+    final concedido = await _grabador.solicitarPermiso();
+    if (!mounted) return;
+    if (!concedido) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Necesitas conceder el permiso de micrófono para usar "Escúchate".',
+          ),
+        ),
+      );
+      return;
+    }
+
+    try {
+      await _grabador.iniciarGrabacion();
+      if (!mounted) return;
+      setState(() => _estado = _EstadoEscuchate.grabando);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo iniciar la grabación.')),
+      );
+    }
+  }
+
+  Future<void> _detenerYReproducir() async {
+    setState(() => _estado = _EstadoEscuchate.reproduciendo);
+    try {
+      await _grabador.detenerYReproducir();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo reproducir la grabación.')),
+      );
+    } finally {
+      if (mounted) setState(() => _estado = _EstadoEscuchate.inactivo);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final (etiqueta, icono) = switch (_estado) {
+      _EstadoEscuchate.inactivo => ('Escúchate', Icons.mic),
+      _EstadoEscuchate.grabando => ('Detener', Icons.stop_circle),
+      _EstadoEscuchate.reproduciendo => ('Reproduciendo…', Icons.volume_up),
+    };
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _estado == _EstadoEscuchate.reproduciendo
+            ? null
+            : _alPresionar,
+        icon: Icon(icono),
+        label: Text(etiqueta),
+      ),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
+import 'package:spelling_bee/core/grabador_audio.dart';
 import 'package:spelling_bee/core/palabras_service.dart';
 import 'package:spelling_bee/core/practica_service.dart';
 import 'package:spelling_bee/core/reproductor_audio.dart';
@@ -150,6 +151,43 @@ class _ReproductorFalso implements ReproductorAudio {
   /// tocado "detener"), tal como haría ReproductorAudioJustAudio al ver
   /// ProcessingState.completed.
   void simularFinNatural() => _controlador.add(EstadoAudio.detenido);
+}
+
+// T-048: falso para GrabadorAudio — sin micrófono/reproductor reales, deja
+// que cada prueba controle el permiso y simule fallas en cualquiera de los
+// 3 pasos (grabar/reproducir/limpiar) sin depender de un canal de
+// plataforma real.
+class _GrabadorFalso implements GrabadorAudio {
+  bool permisoConcedido = true;
+  Object? errorAlIniciar;
+  Object? errorAlReproducir;
+  bool permisoSolicitado = false;
+  bool grabacionIniciada = false;
+  bool reproducido = false;
+  bool disposed = false;
+
+  @override
+  Future<bool> solicitarPermiso() async {
+    permisoSolicitado = true;
+    return permisoConcedido;
+  }
+
+  @override
+  Future<void> iniciarGrabacion() async {
+    if (errorAlIniciar != null) throw errorAlIniciar!;
+    grabacionIniciada = true;
+  }
+
+  @override
+  Future<void> detenerYReproducir() async {
+    if (errorAlReproducir != null) throw errorAlReproducir!;
+    reproducido = true;
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposed = true;
+  }
 }
 
 // T-040: reloj falso — DateTime.now() no obedece tester.pump(duration) (a
@@ -1914,6 +1952,291 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('00:03'), findsOneWidget);
+      },
+    );
+  });
+
+  group('botón Escúchate (T-048, RF-40)', () {
+    testWidgets(
+      'aparece una vez en la sección de deletreo y otra en la de oración, ambas mostrando "Escúchate"',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: _GrabadorFalso(),
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'RF-40: si el permiso de micrófono se niega, avisa y no inicia ninguna grabación',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabador = _GrabadorFalso()..permisoConcedido = false;
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabador,
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+
+        expect(grabador.permisoSolicitado, isTrue);
+        expect(grabador.grabacionIniciada, isFalse);
+        expect(
+          find.text(
+            'Necesitas conceder el permiso de micrófono para usar "Escúchate".',
+          ),
+          findsOneWidget,
+        );
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'RF-40: con permiso concedido, un toque inicia la grabación y cambia a "Detener"',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabador = _GrabadorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabador,
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+
+        expect(grabador.grabacionIniciada, isTrue);
+        expect(find.widgetWithText(OutlinedButton, 'Detener'), findsOneWidget);
+        // La sección de oración (no tocada) sigue en reposo.
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-40: un segundo toque detiene la grabación, la reproduce, y regresa a "Escúchate" al terminar',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabador = _GrabadorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabador,
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Detener'));
+        await tester.pumpAndSettle();
+
+        expect(grabador.reproducido, isTrue);
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'si falla al iniciar la grabación, avisa sin tronar y regresa a "Escúchate"',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabador = _GrabadorFalso()..errorAlIniciar = Exception('mic ocupado');
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabador,
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('No se pudo iniciar la grabación.'), findsOneWidget);
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'si falla al reproducir, avisa sin tronar y de todas formas regresa a "Escúchate" (no se queda atorado)',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabador = _GrabadorFalso()
+          ..errorAlReproducir = Exception('fallo simulado');
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabador,
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Detener'));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('No se pudo reproducir la grabación.'), findsOneWidget);
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'las dos secciones son independientes: grabar en una no afecta el estado de la otra',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabadorDeletreo = _GrabadorFalso();
+        final grabadorOracion = _GrabadorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabadorDeletreo,
+              grabadorOracion: grabadorOracion,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+
+        expect(grabadorDeletreo.grabacionIniciada, isTrue);
+        expect(grabadorOracion.grabacionIniciada, isFalse);
+        expect(find.widgetWithText(OutlinedButton, 'Detener'), findsOneWidget);
+        expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsOneWidget);
+      },
+    );
+
+    testWidgets('al salir de la pantalla, ambos grabadores se liberan (dispose)', (
+      tester,
+    ) async {
+      final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+      final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+      final grabadorDeletreo = _GrabadorFalso();
+      final grabadorOracion = _GrabadorFalso();
+
+      await tester.pumpWidget(
+        _envolver(
+          PracticaPalabraScreen(
+            idPalabra: 1,
+            token: 'token-de-prueba',
+            palabrasService: servicio,
+            reproductor: _ReproductorFalso(),
+            grabadorDeletreo: grabadorDeletreo,
+            grabadorOracion: grabadorOracion,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(_envolver(const SizedBox()));
+      await tester.pumpAndSettle();
+
+      expect(grabadorDeletreo.disposed, isTrue);
+      expect(grabadorOracion.disposed, isTrue);
+    });
+
+    testWidgets(
+      'RF-40: usar "Escúchate" de principio a fin no dispara ninguna llamada de red adicional',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final grabador = _GrabadorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              grabadorDeletreo: grabador,
+              grabadorOracion: _GrabadorFalso(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Ya cargó el detalle de la palabra (1 petición GET) antes de tocar
+        // nada de "Escúchate".
+        final peticionesAntes = cliente.peticiones.length;
+
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Escúchate').first);
+        await tester.pumpAndSettle();
+        await _tocar(tester, find.widgetWithText(OutlinedButton, 'Detener'));
+        await tester.pumpAndSettle();
+
+        // El ciclo completo grabar → detener → reproducir no agregó NINGUNA
+        // petición nueva al mismo cliente HTTP que sí usa el resto de la
+        // pantalla — prueba directa de que "Escúchate" nunca llama a la red.
+        expect(cliente.peticiones.length, peticionesAntes);
       },
     );
   });

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
+import { AdminAlumnosModule } from './admin-alumnos/admin-alumnos.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -20,6 +21,7 @@ import { RachaModule } from './racha/racha.module.js';
     PracticaModule,
     RachaModule,
     InsigniasModule,
+    AdminAlumnosModule,
   ],
   controllers: [AppController],
   providers: [

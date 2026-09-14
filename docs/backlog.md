@@ -49,11 +49,11 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 - [x] **T-045** `POST /practica` (RF-21, RF-27): guarda tiempo, resultado de deletreo y oración; **nunca** acepta ni persiste audio del alumno.
 - [x] **T-046** Racha de días consecutivos por fecha calendario **local del dispositivo** (RF-23) y `GET /racha`.
 - [x] **T-047** Insignia + mensaje de felicitación al completar el 100% de un nivel (RF-24) y `GET /progreso/insignias`.
-- [ ] **T-048** Flutter: botón "Escúchate" (RF-40) — graba con el micrófono, reproduce una vez, borra el archivo del dispositivo de inmediato. 100% local, sin llamadas a la API. Opcional: el alumno puede terminar sin usarlo.
+- [x] **T-048** Flutter: botón "Escúchate" (RF-40) — graba con el micrófono, reproduce una vez, borra el archivo del dispositivo de inmediato. 100% local, sin llamadas a la API. Opcional: el alumno puede terminar sin usarlo.
 
 ## Fase 5 — Seguimiento docente (RF-28 a RF-30)
 
-- [ ] **T-050** `GET /admin/alumnos` (RF-28) con avance general por alumno, paginado (RNF-12).
+- [x] **T-050** `GET /admin/alumnos` (RF-28) con avance general por alumno, paginado (RNF-12).
 - [ ] **T-051** `GET /admin/alumnos/:id` (RF-29): detalle palabra/tiempo/oración por intento, paginado.
 - [ ] **T-052** Filtros combinables `nivel`, `carrera`, `semestre` (RF-30) sobre ambos endpoints anteriores.
 - [ ] **T-053** Flutter: panel docente con tabla de alumnos, detalle y filtros.

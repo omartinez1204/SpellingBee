@@ -50,6 +50,17 @@ dependencies:
   # versión; se declara directo porque ahora el código de la app la importa.
   # Pineado por el mismo motivo que file_picker arriba.
   path_provider: 2.1.6
+  # T-048 (RF-40): graba el "Escúchate" a un archivo temporal (record) y pide
+  # el permiso de micrófono en tiempo de ejecución (permission_handler).
+  # record pineado por el mismo motivo que file_picker arriba. permission_handler
+  # pineado por un motivo más específico y ya confirmado con un build real:
+  # permission_handler 13.x (permission_handler_android 14.x) exige
+  # compileSdk=37 y la app truena en Gradle ("requires compileSdk 37 or
+  # later") contra el compileSdk=36 fijado en android/app/build.gradle.kts;
+  # 11.3.1 (permission_handler_android 12.x) sí compila y corre en un
+  # emulador real contra compileSdk=36.
+  record: 7.1.1
+  permission_handler: 11.3.1
 
 dev_dependencies:
   flutter_test:
