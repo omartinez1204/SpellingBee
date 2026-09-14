@@ -198,4 +198,153 @@ describe('NivelesController (e2e)', () => {
         .expect(200);
     });
   });
+
+  describe('GET /niveles/:id/descarga', () => {
+    async function nivelPorNombre(nombre: string) {
+      const nivel = await prisma.nivel.findFirst({ where: { nombre } });
+      if (!nivel) throw new Error(`No existe el nivel "${nombre}" en el seed.`);
+      return nivel;
+    }
+
+    async function idProfesorAutor() {
+      const profesor = await prisma.usuario.findUnique({
+        where: { nombreUsuario: 'profesorIngles' },
+      });
+      if (!profesor) {
+        throw new Error(
+          'No existe "profesorIngles" — corre el seed antes de las pruebas.',
+        );
+      }
+      return profesor.id;
+    }
+
+    // RF-31: mismo estado real del catálogo que T-021 documenta — sin
+    // contenido capturado (T-003 bloqueado), ninguna palabra tiene
+    // completa=true todavía, así que el paquete viene con la lista vacía.
+    // Es el resultado correcto, no un síntoma de endpoint roto.
+    it('con el catálogo real (sin recálculo de completa todavía) regresa el nivel con palabras: []', async () => {
+      const facil = await nivelPorNombre('Fácil');
+
+      const respuesta = await request(app.getHttpServer())
+        .get(`/niveles/${facil.id}/descarga`)
+        .expect(200);
+
+      expect(respuesta.body).toEqual({
+        nivel: { id: facil.id, nombre: 'Fácil', orden: 1 },
+        palabras: [],
+      });
+    });
+
+    it('incluye texto, significado, oración y url_audio solo de las palabras completa=true AND oculta=false del nivel pedido', async () => {
+      const facil = await nivelPorNombre('Fácil');
+      const intermedio = await nivelPorNombre('Intermedio');
+      const idProfesor = await idProfesorAutor();
+
+      const contenidoCompleto = {
+        significadoEs: 'significado de prueba',
+        oracionEjemplo: 'An example sentence.',
+        nombreArchivoAudio: 'x.mp3',
+      };
+
+      const visible = await prisma.palabra.create({
+        data: {
+          texto: `${PREFIJO_PRUEBA}completa-visible`,
+          idNivel: facil.id,
+          oculta: false,
+          idProfesorAutor: idProfesor,
+          ...contenidoCompleto,
+        },
+      });
+      await prisma.palabra.create({
+        data: {
+          texto: `${PREFIJO_PRUEBA}completa-oculta`,
+          idNivel: facil.id,
+          oculta: true,
+          idProfesorAutor: idProfesor,
+          ...contenidoCompleto,
+        },
+      });
+      await prisma.palabra.create({
+        data: {
+          texto: `${PREFIJO_PRUEBA}incompleta-visible`,
+          idNivel: facil.id,
+          oculta: false,
+          idProfesorAutor: idProfesor,
+          // sin contenido: debe quedar completa=false por el trigger.
+        },
+      });
+      await prisma.palabra.create({
+        data: {
+          texto: `${PREFIJO_PRUEBA}completa-visible-otro-nivel`,
+          idNivel: intermedio.id,
+          oculta: false,
+          idProfesorAutor: idProfesor,
+          ...contenidoCompleto,
+        },
+      });
+
+      const respuesta = await request(app.getHttpServer())
+        .get(`/niveles/${facil.id}/descarga`)
+        .expect(200);
+
+      expect(respuesta.body).toEqual({
+        nivel: { id: facil.id, nombre: 'Fácil', orden: 1 },
+        palabras: [
+          {
+            id: visible.id,
+            texto: visible.texto,
+            significado_es: 'significado de prueba',
+            oracion_ejemplo: 'An example sentence.',
+            url_audio: '/assets/audios/x.mp3',
+          },
+        ],
+      });
+    });
+
+    it('404 con mensaje en español si el nivel no existe', async () => {
+      const respuesta = await request(app.getHttpServer())
+        .get('/niveles/999999/descarga')
+        .expect(404);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'NIVEL_NO_ENCONTRADO',
+          message: 'No existe un nivel con ese id.',
+        },
+      });
+    });
+
+    it('400 con mensaje en español si el id no es numérico', async () => {
+      const respuesta = await request(app.getHttpServer())
+        .get('/niveles/abc/descarga')
+        .expect(400);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'NIVEL_ID_INVALIDO',
+          message: 'El id de nivel debe ser un número entero positivo.',
+        },
+      });
+    });
+
+    it('400 (no 500) si el id es un número demasiado grande para un entero de 64 bits', async () => {
+      const respuesta = await request(app.getHttpServer())
+        .get('/niveles/999999999999999999999/descarga')
+        .expect(400);
+
+      expect(respuesta.body).toEqual({
+        error: {
+          code: 'NIVEL_ID_INVALIDO',
+          message: 'El id de nivel debe ser un número entero positivo.',
+        },
+      });
+    });
+
+    it('no requiere sesión iniciada', async () => {
+      const facil = await nivelPorNombre('Fácil');
+      await request(app.getHttpServer())
+        .get(`/niveles/${facil.id}/descarga`)
+        .expect(200);
+    });
+  });
 });
