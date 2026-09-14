@@ -10,15 +10,9 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
+import { CARRERAS } from '../../common/carreras.js';
 
-// RF-01/RF-37. Carrera: texto literal del ERS (no la forma abreviada que trae
-// diseno-tecnico.md §2, que transcribió mal estos 3 valores). Semestre: 1-10.
-const CARRERAS = [
-  'Ingeniería en Agroalimentos',
-  'Ingeniería en Desarrollo de Software',
-  'Licenciatura en MiPymes',
-] as const;
-
+// RF-01/RF-37. Semestre: 1-10.
 export class RegistroAlumnoDto {
   @IsString({ message: 'La matrícula debe ser texto.' })
   @IsNotEmpty({ message: 'La matrícula es obligatoria.' })
