@@ -4,6 +4,7 @@ import '../core/auth_controller.dart';
 import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
 import 'perfil_progreso_screen.dart';
+import 'seguimiento_alumnos_screen.dart';
 
 /// Placeholder: el catálogo/práctica del alumno todavía no tiene pantalla
 /// propia en el backlog (T-026 es solo la práctica de una palabra ya
@@ -46,6 +47,20 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   child: const Text('Administrar catálogo'),
+                ),
+                const SizedBox(height: 12),
+                // RF-28 a RF-30 (T-053, CU-03): panel docente de seguimiento
+                // — solo tiene sentido para el profesor, un alumno no
+                // consulta el progreso de otros.
+                FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SeguimientoAlumnosScreen(
+                        authController: authController,
+                      ),
+                    ),
+                  ),
+                  child: const Text('Seguimiento de alumnos'),
                 ),
                 const SizedBox(height: 12),
               ] else ...[

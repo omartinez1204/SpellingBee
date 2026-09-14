@@ -56,7 +56,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 - [x] **T-050** `GET /admin/alumnos` (RF-28) con avance general por alumno, paginado (RNF-12).
 - [x] **T-051** `GET /admin/alumnos/:id` (RF-29): detalle palabra/tiempo/oración por intento, paginado.
 - [x] **T-052** Filtros combinables `nivel`, `carrera`, `semestre` (RF-30) sobre ambos endpoints anteriores.
-- [ ] **T-053** Flutter: panel docente con tabla de alumnos, detalle y filtros.
+- [x] **T-053** Flutter: panel docente con tabla de alumnos, detalle y filtros.
 
 ## Fase 6 — Modo offline (RF-31 a RF-34, RF-38)
 

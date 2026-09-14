@@ -2,17 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
+import '../core/carreras.dart';
 import '../widgets/campo_contrasena.dart';
-
-// RF-01: los 3 nombres de carrera son el texto literal del ERS (no la forma
-// abreviada que trae diseno-tecnico.md §2 — ver la corrección hecha en T-010,
-// backend/src/auth/dto/registro-alumno.dto.ts). Deben coincidir carácter por
-// carácter con lo que valida el backend.
-const _carreras = [
-  'Ingeniería en Agroalimentos',
-  'Ingeniería en Desarrollo de Software',
-  'Licenciatura en MiPymes',
-];
 
 // T-074 / RF-37: texto PROVISIONAL. El contenido definitivo lo redacta el
 // área jurídica de NovaUniversitas (RNF-11) — no es un aviso de privacidad
@@ -157,7 +148,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
                         labelText: 'Carrera',
                         border: OutlineInputBorder(),
                       ),
-                      items: _carreras
+                      items: carreras
                           .map(
                             (c) => DropdownMenuItem(
                               value: c,
