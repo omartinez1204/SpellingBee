@@ -50,10 +50,20 @@ class PracticaPalabraScreen extends StatefulWidget {
     this.practicaService,
     this.grabadorDeletreo,
     this.grabadorOracion,
+    this.palabraDescargada,
   });
 
   final int idPalabra;
   final PalabrasService? palabrasService;
+
+  /// RF-32 (T-061): cuando quien navega aquí YA tiene el detalle de la
+  /// palabra (viene de un paquete de nivel descargado, ver NivelesScreen),
+  /// se usa este valor directo y jamás se llama a GET /palabras/:id — es lo
+  /// que permite que "ver palabra" siga funcionando con el dispositivo en
+  /// modo avión. null (el caso normal, todavía sin esta pantalla de
+  /// descargas) preserva el comportamiento de siempre: pedir el detalle por
+  /// red con palabrasService.
+  final DetallePalabra? palabraDescargada;
 
   /// RF-22 (T-042): GET /practica/mejor-tiempo/:id necesita sesión — el
   /// backend responde sobre el alumno del propio JWT, no hay id que pasar
@@ -139,7 +149,9 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     _reproductor = widget.reproductor ?? ReproductorAudioJustAudio();
     _ahora = widget.ahora ?? DateTime.now;
     _practicaService = widget.practicaService ?? PracticaService();
-    _futuraPalabra = _palabrasService.obtenerDetalle(widget.idPalabra);
+    _futuraPalabra = widget.palabraDescargada != null
+        ? Future.value(widget.palabraDescargada)
+        : _palabrasService.obtenerDetalle(widget.idPalabra);
     _suscripcionAudio = _reproductor.estado.listen((estado) {
       if (!mounted) return;
       setState(() {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/auth_controller.dart';
 import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
+import 'niveles_screen.dart';
 import 'perfil_progreso_screen.dart';
 import 'seguimiento_alumnos_screen.dart';
 
@@ -64,6 +65,18 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
               ] else ...[
+                // RF-31/RF-32 (T-061): descargar niveles y practicar, con o
+                // sin conexión — único punto de entrada, igual que
+                // "Administrar catálogo" lo es para el profesor.
+                FilledButton(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => NivelesScreen(token: sesion.token),
+                    ),
+                  ),
+                  child: const Text('Practicar'),
+                ),
+                const SizedBox(height: 12),
                 // RF-24 (T-047): insignias por nivel completado — solo tiene
                 // sentido para el alumno, un profesor no practica palabras.
                 FilledButton(
