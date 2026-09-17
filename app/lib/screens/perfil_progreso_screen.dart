@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
+import '../core/cola_practica_archivo.dart';
 import '../core/insignia.dart';
 import '../core/insignias_service.dart';
 import '../core/nivel.dart';
 import '../core/niveles_service.dart';
+import '../core/sincronizador_practica.dart';
+import '../widgets/indicador_sincronizacion.dart';
 
 /// RF-24, punto 2 (T-047): insignias permanentes del alumno, una por nivel
 /// completado al 100%. Combina GET /niveles (los 3 posibles, RF-05) con
@@ -22,6 +25,7 @@ class PerfilProgresoScreen extends StatefulWidget {
     required this.token,
     this.nivelesService,
     this.insigniasService,
+    this.sincronizador,
   });
 
   final String token;
@@ -31,6 +35,15 @@ class PerfilProgresoScreen extends StatefulWidget {
   final NivelesService? nivelesService;
   final InsigniasService? insigniasService;
 
+  /// RF-33 (T-062): compartido con la sesión completa del alumno (ver
+  /// HomeScreen, dueño real del ciclo de vida de este objeto) — igual que en
+  /// NivelesScreen/PracticaPalabraScreen, esta pantalla solo lo recibe para
+  /// mostrar el indicador de RF-34 (T-064), nunca lo arranca con iniciar()
+  /// ni lo cierra con dispose(). null (inyectable solo para pruebas, o
+  /// cualquier navegación futura sin HomeScreen de por medio) hace que esta
+  /// pantalla arme uno propio, sin arrancarlo.
+  final SincronizadorPractica? sincronizador;
+
   @override
   State<PerfilProgresoScreen> createState() => _PerfilProgresoScreenState();
 }
@@ -38,6 +51,7 @@ class PerfilProgresoScreen extends StatefulWidget {
 class _PerfilProgresoScreenState extends State<PerfilProgresoScreen> {
   late final NivelesService _nivelesService;
   late final InsigniasService _insigniasService;
+  late final SincronizadorPractica _sincronizador;
   late final Future<(List<Nivel>, List<Insignia>)> _futuroProgreso;
 
   @override
@@ -45,6 +59,9 @@ class _PerfilProgresoScreenState extends State<PerfilProgresoScreen> {
     super.initState();
     _nivelesService = widget.nivelesService ?? NivelesService();
     _insigniasService = widget.insigniasService ?? InsigniasService();
+    _sincronizador =
+        widget.sincronizador ??
+        SincronizadorPractica(cola: ColaPracticaArchivo(), token: widget.token);
     _futuroProgreso = _cargarProgreso();
   }
 
@@ -57,7 +74,10 @@ class _PerfilProgresoScreenState extends State<PerfilProgresoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Mi progreso')),
+      appBar: AppBar(
+        title: const Text('Mi progreso'),
+        actions: [IndicadorSincronizacion(sincronizador: _sincronizador)],
+      ),
       body: SafeArea(
         child: FutureBuilder<(List<Nivel>, List<Insignia>)>(
           future: _futuroProgreso,

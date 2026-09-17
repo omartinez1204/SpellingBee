@@ -18,6 +18,7 @@ import '../core/registro_practica_pendiente.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
 import '../core/sincronizador_practica.dart';
+import '../widgets/indicador_sincronizacion.dart';
 
 /// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032) + RF-19 a RF-22
 /// (T-040/T-041/T-042): pantalla de práctica de UNA palabra. Muestra de
@@ -372,7 +373,10 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Practicar palabra')),
+      appBar: AppBar(
+        title: const Text('Practicar palabra'),
+        actions: [IndicadorSincronizacion(sincronizador: _sincronizador)],
+      ),
       body: SafeArea(
         child: FutureBuilder<DetallePalabra>(
           future: _futuraPalabra,

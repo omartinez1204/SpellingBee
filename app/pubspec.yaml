@@ -61,6 +61,14 @@ dependencies:
   # emulador real contra compileSdk=36.
   record: 7.1.1
   permission_handler: 11.3.1
+  # T-064 (RF-34): estado real de conectividad del dispositivo. A diferencia
+  # de permission_handler arriba, su build.gradle usa
+  # `compileSdk = flutter.compileSdkVersion` (no un valor fijo más nuevo que
+  # el 36 de este proyecto), así que no se esperaba el mismo tipo de choque;
+  # de cualquier forma se pineó a la versión exacta ya confirmada con un
+  # build real (`flutter build apk --debug`) contra compileSdk=36, mismo
+  # criterio que el resto de los paquetes de esta sección.
+  connectivity_plus: 7.3.1
 
 dev_dependencies:
   flutter_test:

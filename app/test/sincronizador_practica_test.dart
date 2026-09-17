@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/cola_practica_archivo.dart';
+import 'package:spelling_bee/core/monitor_conectividad.dart';
 import 'package:spelling_bee/core/practica_service.dart';
 import 'package:spelling_bee/core/registro_practica_pendiente.dart';
 import 'package:spelling_bee/core/sincronizador_practica.dart';
@@ -101,6 +102,32 @@ class _ClienteConControlManual extends http.BaseClient {
       http.StreamedResponse(Stream.value(utf8.encode('{}')), 200),
     );
   }
+}
+
+/// T-064 (RF-34): falso 100% en memoria — mismo motivo que los http.BaseClient
+/// falsos de arriba: sin esto, SincronizadorPractica.iniciar() construiría un
+/// MonitorConectividadReal de verdad, que toca un canal de plataforma
+/// (connectivity_plus) inexistente bajo plain test() (sin el binding de
+/// testWidgets()).
+class _MonitorConectividadFalso implements MonitorConectividad {
+  _MonitorConectividadFalso({EstadoConexion inicial = EstadoConexion.enLinea})
+    : _actual = inicial;
+
+  EstadoConexion _actual;
+  final _controlador = StreamController<EstadoConexion>.broadcast();
+
+  @override
+  Future<EstadoConexion> obtenerActual() async => _actual;
+
+  @override
+  Stream<EstadoConexion> get cambios => _controlador.stream;
+
+  void simularCambio(EstadoConexion estado) {
+    _actual = estado;
+    _controlador.add(estado);
+  }
+
+  void cerrar() => _controlador.close();
 }
 
 void main() {
@@ -337,6 +364,10 @@ void main() {
         practicaService: PracticaService(
           apiClient: ApiClient(httpClient: clienteQueFalla),
         ),
+        // T-064: inyectado para no tocar connectivity_plus real (ver
+        // _MonitorConectividadFalso) — esta prueba es sobre el temporizador
+        // de reintento, no sobre conectividad.
+        monitorConectividad: _MonitorConectividadFalso(),
         intervaloReintento: const Duration(milliseconds: 50),
       );
       addTearDown(sincronizador.dispose);
@@ -366,6 +397,185 @@ void main() {
         hasLength(1),
         reason: 'sigue sin confirmarse ningún envío exitoso, así que el registro no debe perderse',
       );
+    },
+  );
+
+  test(
+    'RF-34: antes de iniciar() el estado de conexión es optimista (en línea); iniciar() lo corrige con el valor real de MonitorConectividad',
+    () async {
+      final monitorFalso = _MonitorConectividadFalso(
+        inicial: EstadoConexion.sinConexion,
+      );
+      addTearDown(monitorFalso.cerrar);
+      final sincronizador = SincronizadorPractica(
+        cola: crearCola(),
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteRutaNoExiste()),
+        ),
+        monitorConectividad: monitorFalso,
+      );
+      addTearDown(sincronizador.dispose);
+
+      expect(sincronizador.estadoConexion, EstadoConexion.enLinea);
+
+      await sincronizador.iniciar();
+
+      expect(sincronizador.estadoConexion, EstadoConexion.sinConexion);
+
+      // iniciar() también dispara un intentarSincronizar() inicial sin
+      // esperarlo (unawaited, incluso con la cola vacía sigue tocando disco
+      // una vez más en su bloque finally) — se le da tiempo real a terminar
+      // antes de que el addTearDown(sincronizador.dispose) de arriba se
+      // ejecute (mismo motivo que en encolar(), más arriba en este archivo).
+      await Future.delayed(const Duration(milliseconds: 50));
+    },
+  );
+
+  test(
+    'RF-34: un cambio de conectividad reportado por MonitorConectividad después de iniciar() actualiza estadoConexion de inmediato',
+    () async {
+      final monitorFalso = _MonitorConectividadFalso();
+      addTearDown(monitorFalso.cerrar);
+      final sincronizador = SincronizadorPractica(
+        cola: crearCola(),
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteRutaNoExiste()),
+        ),
+        monitorConectividad: monitorFalso,
+      );
+      addTearDown(sincronizador.dispose);
+      await sincronizador.iniciar();
+      expect(sincronizador.estadoConexion, EstadoConexion.enLinea);
+
+      monitorFalso.simularCambio(EstadoConexion.sinConexion);
+      await Future.delayed(Duration.zero);
+
+      expect(sincronizador.estadoConexion, EstadoConexion.sinConexion);
+
+      // Ver el comentario equivalente en la prueba anterior: deja asentar el
+      // intentarSincronizar() inicial de iniciar() antes de dispose().
+      await Future.delayed(const Duration(milliseconds: 50));
+    },
+  );
+
+  test(
+    'RF-33/RF-34: al reconectar (según MonitorConectividad) se sincroniza de inmediato, sin esperar el temporizador',
+    () async {
+      final cola = crearCola();
+      final backend = _BackendSyncSimulado();
+      final monitorFalso = _MonitorConectividadFalso(
+        inicial: EstadoConexion.sinConexion,
+      );
+      addTearDown(monitorFalso.cerrar);
+      final sincronizador = SincronizadorPractica(
+        cola: cola,
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteHttpDePrueba(backend)),
+        ),
+        monitorConectividad: monitorFalso,
+        // Deliberadamente largo: si el lote de todas formas llega, es por la
+        // reconexión simulada abajo, no por este temporizador.
+        intervaloReintento: const Duration(minutes: 5),
+      );
+      addTearDown(sincronizador.dispose);
+
+      // Cola vacía en este momento: el intento inmediato que dispara
+      // iniciar() no manda nada — así el único candidato a mandar el lote
+      // de abajo es la reconexión simulada, no el arranque.
+      await sincronizador.iniciar();
+      await cola.agregar(registroDePrueba());
+
+      monitorFalso.simularCambio(EstadoConexion.enLinea);
+      await Future.delayed(const Duration(milliseconds: 30));
+
+      expect(backend.lotesRecibidos, hasLength(1));
+      expect(await cola.listarPendientes(), isEmpty);
+      expect(sincronizador.estadoConexion, EstadoConexion.enLinea);
+    },
+  );
+
+  test(
+    'RF-34: sincronizacionesExitosas emite la cantidad de registros justo después de un lote exitoso',
+    () async {
+      final cola = crearCola();
+      await cola.agregar(registroDePrueba(id: 'id-1'));
+      await cola.agregar(registroDePrueba(id: 'id-2', idPalabra: 11));
+
+      final backend = _BackendSyncSimulado();
+      final sincronizador = SincronizadorPractica(
+        cola: cola,
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteHttpDePrueba(backend)),
+        ),
+      );
+      addTearDown(sincronizador.dispose);
+
+      final cantidades = <int>[];
+      final suscripcion = sincronizador.sincronizacionesExitosas.listen(
+        cantidades.add,
+      );
+      addTearDown(suscripcion.cancel);
+
+      await sincronizador.intentarSincronizar();
+
+      expect(cantidades, [2]);
+    },
+  );
+
+  test(
+    'RF-34: sincronizacionesExitosas no emite nada cuando no hay nada pendiente que sincronizar',
+    () async {
+      final backend = _BackendSyncSimulado();
+      final sincronizador = SincronizadorPractica(
+        cola: crearCola(),
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteHttpDePrueba(backend)),
+        ),
+      );
+      addTearDown(sincronizador.dispose);
+
+      final cantidades = <int>[];
+      final suscripcion = sincronizador.sincronizacionesExitosas.listen(
+        cantidades.add,
+      );
+      addTearDown(suscripcion.cancel);
+
+      await sincronizador.intentarSincronizar();
+
+      expect(cantidades, isEmpty);
+      expect(backend.lotesRecibidos, isEmpty);
+    },
+  );
+
+  test(
+    'RF-34: sincronizacionesExitosas no emite nada cuando la sincronización falla',
+    () async {
+      final cola = crearCola();
+      await cola.agregar(registroDePrueba());
+
+      final sincronizador = SincronizadorPractica(
+        cola: cola,
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(httpClient: _ClienteRutaNoExiste()),
+        ),
+      );
+      addTearDown(sincronizador.dispose);
+
+      final cantidades = <int>[];
+      final suscripcion = sincronizador.sincronizacionesExitosas.listen(
+        cantidades.add,
+      );
+      addTearDown(suscripcion.cancel);
+
+      await sincronizador.intentarSincronizar();
+
+      expect(cantidades, isEmpty);
     },
   );
 }

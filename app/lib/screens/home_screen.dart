@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../core/auth_controller.dart';
 import '../core/cola_practica_archivo.dart';
 import '../core/sincronizador_practica.dart';
+import '../widgets/indicador_sincronizacion.dart';
 import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
 import 'niveles_screen.dart';
@@ -63,7 +64,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final sesion = widget.authController.sesion!;
     return Scaffold(
-      appBar: AppBar(title: const Text('Spelling Bee')),
+      appBar: AppBar(
+        title: const Text('Spelling Bee'),
+        // RF-34 (T-064): solo tiene sentido para el alumno — un profesor
+        // nunca practica, así que _sincronizador es null en su sesión (ver
+        // initState()).
+        actions: [
+          if (_sincronizador != null)
+            IndicadorSincronizacion(sincronizador: _sincronizador!),
+        ],
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -128,8 +138,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 FilledButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) =>
-                          PerfilProgresoScreen(token: sesion.token),
+                      builder: (_) => PerfilProgresoScreen(
+                        token: sesion.token,
+                        sincronizador: _sincronizador,
+                      ),
                     ),
                   ),
                   child: const Text('Mi progreso'),

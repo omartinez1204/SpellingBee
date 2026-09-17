@@ -5,6 +5,7 @@ import '../core/detalle_palabra.dart';
 import '../core/niveles_controller.dart';
 import '../core/paquete_nivel.dart';
 import '../core/sincronizador_practica.dart';
+import '../widgets/indicador_sincronizacion.dart';
 import 'practica_palabra_screen.dart';
 
 /// RF-31/RF-32 (T-061): punto de entrada de práctica del alumno — todavía
@@ -68,7 +69,10 @@ class _NivelesScreenState extends State<NivelesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Practicar')),
+      appBar: AppBar(
+        title: const Text('Practicar'),
+        actions: [IndicadorSincronizacion(sincronizador: _sincronizador)],
+      ),
       body: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) => _cuerpo(),
