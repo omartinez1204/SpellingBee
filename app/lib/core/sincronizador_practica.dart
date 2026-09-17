@@ -18,10 +18,10 @@ import 'registro_practica_pendiente.dart';
 /// tarea en segundo plano tipo WorkManager/BGTaskScheduler — nada de eso
 /// existía antes de T-062 y no se agregó aquí. "Detectar conectividad" se
 /// resuelve con la propia llamada de sincronización: si tiene éxito, había
-/// conectividad; si falla, no la había (o el endpoint de T-063 todavía no
-/// existe). Esto cubre el texto literal de RF-33 sin depender de una señal
-/// de radio del sistema operativo (que además no garantiza que el backend
-/// en sí sea alcanzable). Y "mientras el proceso siga vivo" es el límite
+/// conectividad (y el servidor — T-063, POST /practica/sync — la recibió);
+/// si falla, no la había. Esto cubre el texto literal de RF-33 sin depender
+/// de una señal de radio del sistema operativo (que además no garantiza que
+/// el backend en sí sea alcanzable). Y "mientras el proceso siga vivo" es el límite
 /// real: si el sistema operativo mata la app por completo, el reintento se
 /// detiene hasta que alguien vuelva a abrirla — igual que CUALQUIER otra
 /// función de esta app hoy, no una limitación nueva de esta tarea. Si se
@@ -87,8 +87,9 @@ class SincronizadorPractica extends ChangeNotifier {
   /// Idempotente frente a llamadas solapadas (el temporizador de 5 minutos,
   /// un encolar() reciente y un guardarPractica() en línea exitoso pueden
   /// coincidir): _sincronizando evita mandar el mismo lote dos veces en
-  /// paralelo mientras T-063 todavía no exista para deduplicar del lado del
-  /// servidor. El check-y-marca (`if (_sincronizando) return; _sincronizando
+  /// paralelo — aunque el servidor (T-063) ya deduplica por su cuenta vía el
+  /// id de cliente, evitar el envío duplicado de entrada ahorra la vuelta de
+  /// red. El check-y-marca (`if (_sincronizando) return; _sincronizando
   /// = true;`) queda completo antes del primer await, a propósito — con un
   /// await de por medio entre ambas líneas, dos llamadas solapadas podrían
   /// pasar las dos la comprobación antes de que cualquiera alcanzara a
@@ -109,8 +110,8 @@ class SincronizadorPractica extends ChangeNotifier {
         await _cola.eliminar(registro.id);
       }
     } catch (_) {
-      // Sin conexión, o el endpoint de T-063 todavía no existe: la cola se
-      // queda tal cual. El próximo tick de 5 minutos (o el próximo
+      // Sin conexión, backend no disponible, o cualquier otro fallo: la
+      // cola se queda tal cual. El próximo tick de 5 minutos (o el próximo
       // encolar()/iniciar()) vuelve a intentar — sin intervención del
       // alumno, tal como pide el criterio de RF-33.
     } finally {

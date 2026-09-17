@@ -113,6 +113,13 @@ model RegistroPractica {
   deletreoCorrecto  Boolean  @map("deletreo_correcto")
   fechaHora         DateTime @default(now()) @map("fecha_hora")
   sincronizado      Boolean  @map("sincronizado") // RF-33
+  // T-063 (RF-33): id generado en el CLIENTE (ver app/lib/core/id_cliente.dart)
+  // para que POST /practica/sync sea idempotente — un reintento que reenvía
+  // un registro ya recibido se detecta buscando este id, no se duplica.
+  // Nulo para todo registro creado por el camino en línea de siempre
+  // (POST /practica, T-045), que nunca manda un id propio; único cuando SÍ
+  // existe (SQLite no choca entre múltiples NULL bajo un índice único).
+  idCliente         String?  @unique @map("id_cliente")
 
   alumno  Usuario @relation(fields: [idAlumno], references: [id])
   palabra Palabra @relation(fields: [idPalabra], references: [id])

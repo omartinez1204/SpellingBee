@@ -1,7 +1,17 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { JwtAuthGuard, type JwtPayload } from '../auth/guards/jwt-auth.guard.js';
 import { GuardarPracticaDto } from './dto/guardar-practica.dto.js';
+import { SincronizarPracticaDto } from './dto/sincronizar-practica.dto.js';
 import { PracticaService } from './practica.service.js';
 
 // RF-21/RF-22/RF-27 (T-042/T-045). Ninguna ruta de este controlador es
@@ -33,5 +43,18 @@ export class PracticaController {
     @Body() dto: GuardarPracticaDto,
   ) {
     return this.practicaService.guardarPractica(usuario.sub, dto);
+  }
+
+  // T-063 (RF-33). 200, no el 201 por default de @Post(): esto no crea "un"
+  // recurso — es una operación de sincronización en lote, idempotente, que
+  // puede terminar creando cero registros nuevos (si todos ya existían).
+  @Post('sync')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  sincronizarLote(
+    @CurrentUser() usuario: JwtPayload,
+    @Body() dto: SincronizarPracticaDto,
+  ) {
+    return this.practicaService.sincronizarLote(usuario.sub, dto);
   }
 }

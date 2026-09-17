@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -448,5 +449,285 @@ describe('PracticaController (e2e) - POST /practica', () => {
       where: { idAlumno, idPalabra },
     });
     expect(cuenta).toBe(0);
+  });
+});
+
+describe('PracticaController (e2e) - POST /practica/sync', () => {
+  let app: INestApplication<App>;
+  let prisma: PrismaService;
+  let idNivelFacil: number;
+  let idProfesorAutor: number;
+  let idPalabra: number;
+  let idPalabraCompleta: number;
+  let idAlumno: number;
+  let tokenAlumno: string;
+
+  const PREFIJO_PRUEBA = 'TEST-T063-';
+  const USUARIO_ALUMNO = 'TEST-T063-ALUMNO';
+  const PASSWORD = 'ClaveDePrueba123';
+
+  beforeEach(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    configureApp(app);
+    await app.init();
+    prisma = app.get(PrismaService);
+
+    const facil = await prisma.nivel.findFirst({ where: { nombre: 'Fácil' } });
+    const profesor = await prisma.usuario.findUnique({
+      where: { nombreUsuario: 'profesorIngles' },
+    });
+    if (!facil || !profesor) {
+      throw new Error(
+        'Faltan datos de seed (nivel "Fácil" o "profesorIngles") — corre el seed antes de las pruebas.',
+      );
+    }
+    idNivelFacil = facil.id;
+    idProfesorAutor = profesor.id;
+
+    const palabra = await prisma.palabra.create({
+      data: {
+        texto: `${PREFIJO_PRUEBA}collect`,
+        idNivel: idNivelFacil,
+        idProfesorAutor,
+      },
+    });
+    idPalabra = palabra.id;
+
+    // Única palabra COMPLETA y visible de Fácil dentro de este bloque (las
+    // 45 del catálogo real siguen bloqueadas, T-003) — mismo patrón que
+    // insignias.e2e-spec.ts: practicarla basta para completar el 100% de
+    // Fácil y probar que sincronizarLote() también otorga la insignia.
+    const palabraCompleta = await prisma.palabra.create({
+      data: {
+        texto: `${PREFIJO_PRUEBA}complete`,
+        idNivel: idNivelFacil,
+        idProfesorAutor,
+        significadoEs: 'completo',
+        oracionEjemplo: 'This word is complete.',
+        nombreArchivoAudio: 'test-t063-complete.mp3',
+      },
+    });
+    idPalabraCompleta = palabraCompleta.id;
+
+    const registro = await request(app.getHttpServer())
+      .post('/auth/registro')
+      .send({
+        matricula: USUARIO_ALUMNO,
+        nombre: 'Alumna',
+        apellido_paterno: 'De',
+        apellido_materno: 'Prueba',
+        carrera: 'Ingeniería en Desarrollo de Software',
+        semestre: 4,
+        correo: `${USUARIO_ALUMNO.toLowerCase()}@example.com`,
+        contrasena: PASSWORD,
+        acepto_aviso_privacidad: true,
+      })
+      .expect(201);
+    idAlumno = registro.body.id as number;
+
+    const login = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ nombre_usuario: USUARIO_ALUMNO, contrasena: PASSWORD })
+      .expect(200);
+    tokenAlumno = login.body.access_token as string;
+  });
+
+  afterEach(async () => {
+    await prisma.registroPractica.deleteMany({
+      where: { palabra: { texto: { startsWith: PREFIJO_PRUEBA } } },
+    });
+    await prisma.racha.deleteMany({
+      where: { alumno: { nombreUsuario: USUARIO_ALUMNO } },
+    });
+    await prisma.insignia.deleteMany({
+      where: { alumno: { nombreUsuario: USUARIO_ALUMNO } },
+    });
+    await prisma.palabra.deleteMany({
+      where: { texto: { startsWith: PREFIJO_PRUEBA } },
+    });
+    await prisma.perfilAlumno.deleteMany({
+      where: { usuario: { nombreUsuario: USUARIO_ALUMNO } },
+    });
+    await prisma.usuario.deleteMany({
+      where: { nombreUsuario: USUARIO_ALUMNO },
+    });
+    await app.close();
+  });
+
+  const registroValido = (overrides: Record<string, unknown> = {}) => ({
+    id: randomUUID(),
+    id_palabra: idPalabra,
+    tiempo_segundos: 10,
+    oracion_alumno: 'I will collect the mail today.',
+    deletreo_correcto: true,
+    fecha_local: '2026-09-10',
+    ...overrides,
+  });
+
+  it('sincroniza un lote de varios registros nuevos, cada uno con su id de cliente', async () => {
+    const registros = [
+      registroValido({ id: 'lote-a', tiempo_segundos: 10 }),
+      registroValido({ id: 'lote-b', tiempo_segundos: 20 }),
+    ];
+
+    const respuesta = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros })
+      .expect(200);
+
+    expect(respuesta.body).toEqual({ sincronizados: 2, ya_existian: 0 });
+
+    const guardados = await prisma.registroPractica.findMany({
+      where: { idAlumno },
+      orderBy: { tiempoSegundos: 'asc' },
+    });
+    expect(guardados).toHaveLength(2);
+    expect(guardados[0]).toMatchObject({
+      idCliente: 'lote-a',
+      tiempoSegundos: 10,
+      sincronizado: true,
+    });
+    expect(guardados[1]).toMatchObject({ idCliente: 'lote-b', tiempoSegundos: 20 });
+  });
+
+  it('RF-33: idempotente — reenviar el MISMO lote no duplica ni sobreescribe', async () => {
+    const registros = [registroValido({ id: 'reintento-1', tiempo_segundos: 30 })];
+
+    await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros })
+      .expect(200);
+
+    // Mismo id, tiempo distinto — si esto "sobreescribiera" en vez de
+    // saltarse, el tiempo guardado cambiaría a 99; RF-33 exige que no lo haga.
+    const segundoIntento = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros: [registroValido({ id: 'reintento-1', tiempo_segundos: 99 })] })
+      .expect(200);
+
+    expect(segundoIntento.body).toEqual({ sincronizados: 0, ya_existian: 1 });
+
+    const guardados = await prisma.registroPractica.findMany({
+      where: { idCliente: 'reintento-1' },
+    });
+    expect(guardados).toHaveLength(1);
+    expect(guardados[0].tiempoSegundos).toBe(30);
+  });
+
+  it('RF-33: en un lote MIXTO, solo se crean los registros con id nuevo — los ya existentes no se tocan', async () => {
+    await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros: [registroValido({ id: 'ya-estaba' })] })
+      .expect(200);
+
+    const respuesta = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({
+        registros: [
+          registroValido({ id: 'ya-estaba' }),
+          registroValido({ id: 'es-nuevo', tiempo_segundos: 55 }),
+        ],
+      })
+      .expect(200);
+
+    expect(respuesta.body).toEqual({ sincronizados: 1, ya_existian: 1 });
+    expect(await prisma.registroPractica.count({ where: { idAlumno } })).toBe(2);
+  });
+
+  it('RF-23: procesa por fecha_local ASCENDENTE sin importar el orden del arreglo, para no romper la racha', async () => {
+    // Mandados fuera de orden (día 3, día 1, día 2) a propósito.
+    const registros = [
+      registroValido({ id: 'dia-3', fecha_local: '2026-09-12' }),
+      registroValido({ id: 'dia-1', fecha_local: '2026-09-10' }),
+      registroValido({ id: 'dia-2', fecha_local: '2026-09-11' }),
+    ];
+
+    await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros })
+      .expect(200);
+
+    const racha = await prisma.racha.findUnique({ where: { idAlumno } });
+    expect(racha?.diasConsecutivos).toBe(3);
+    expect(racha?.ultimaFechaPractica.toISOString()).toBe('2026-09-12T00:00:00.000Z');
+  });
+
+  it('RF-24: un lote que completa el 100% de un nivel otorga la insignia (mismo efecto que POST /practica)', async () => {
+    await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros: [registroValido({ id: 'insignia-1', id_palabra: idPalabraCompleta })] })
+      .expect(200);
+
+    const insignia = await prisma.insignia.findUnique({
+      where: { idAlumno_idNivel: { idAlumno, idNivel: idNivelFacil } },
+    });
+    expect(insignia).not.toBeNull();
+  });
+
+  it('400 si registros es un arreglo vacío — el cliente real nunca lo manda así', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros: [] })
+      .expect(400);
+
+    expect(respuesta.body.error.code).toBe('VALIDACION');
+  });
+
+  it('requiere sesión iniciada', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .send({ registros: [registroValido()] })
+      .expect(401);
+
+    expect(respuesta.body.error.code).toBe('SESION_REQUERIDA');
+  });
+
+  it('400 si falta el id de cliente de un registro', async () => {
+    const { id: _omitido, ...incompleto } = registroValido();
+
+    const respuesta = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros: [incompleto] })
+      .expect(400);
+
+    expect(respuesta.body.error.code).toBe('VALIDACION');
+  });
+
+  it('400 si registros no es un arreglo', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({ registros: 'no-es-un-arreglo' })
+      .expect(400);
+
+    expect(respuesta.body.error.code).toBe('VALIDACION');
+  });
+
+  it('404 si algún id_palabra del lote no existe — el lote entero no se guarda (todo o nada)', async () => {
+    await request(app.getHttpServer())
+      .post('/practica/sync')
+      .set('Authorization', `Bearer ${tokenAlumno}`)
+      .send({
+        registros: [
+          registroValido({ id: 'valido' }),
+          registroValido({ id: 'invalido', id_palabra: 999999999 }),
+        ],
+      })
+      .expect(404);
+
+    expect(await prisma.registroPractica.count({ where: { idAlumno } })).toBe(0);
   });
 });

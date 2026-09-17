@@ -61,14 +61,14 @@ class PracticaService {
     return insigniaJson == null ? null : Insignia.desdeJson(insigniaJson);
   }
 
-  /// RF-33 (T-062 cliente / T-063 servidor — este último todavía no existe):
-  /// POST /practica/sync en lote. Mismos 5 campos que guardarPractica() más
-  /// el `id` generado en el cliente (docs/diseno-tecnico.md §3.6), para que
-  /// el futuro servidor pueda deduplicar un reintento sin duplicar el
-  /// registro. Hasta que T-063 exista, esta llamada siempre falla (404 de
-  /// ruta no encontrada, envuelto por ApiClient como un ApiException normal
-  /// vía el filtro global de excepciones del backend) — comportamiento
-  /// esperado, no un error de este método; ver SincronizadorPractica.
+  /// RF-33 (T-062 cliente / T-063 servidor): POST /practica/sync en lote.
+  /// Mismos 5 campos que guardarPractica() más el `id` generado en el
+  /// cliente (docs/diseno-tecnico.md §3.6), que el servidor usa como llave
+  /// de deduplicación — un reintento que reenvía un registro ya recibido no
+  /// lo duplica ni lo sobreescribe (ver PracticaService.sincronizarLote en
+  /// el backend). El cuerpo de la respuesta ({sincronizados, ya_existian})
+  /// no se usa aquí: a SincronizadorPractica solo le importa si la llamada
+  /// tuvo éxito (2xx) o no.
   Future<void> sincronizarLote(
     List<RegistroPracticaPendiente> registros,
     String token,
