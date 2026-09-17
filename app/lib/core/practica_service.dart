@@ -1,6 +1,7 @@
 import 'api_client.dart';
 import 'fecha_local.dart';
 import 'insignia.dart';
+import 'registro_practica_pendiente.dart';
 
 /// RF-22 (T-042): GET /practica/mejor-tiempo/:idPalabra. Autenticado — el
 /// backend responde sobre EL PROPIO alumno de la sesión (no hay id de
@@ -58,5 +59,22 @@ class PracticaService {
     );
     final insigniaJson = json['insignia_otorgada'] as Map<String, dynamic>?;
     return insigniaJson == null ? null : Insignia.desdeJson(insigniaJson);
+  }
+
+  /// RF-33 (T-062 cliente / T-063 servidor — este último todavía no existe):
+  /// POST /practica/sync en lote. Mismos 5 campos que guardarPractica() más
+  /// el `id` generado en el cliente (docs/diseno-tecnico.md §3.6), para que
+  /// el futuro servidor pueda deduplicar un reintento sin duplicar el
+  /// registro. Hasta que T-063 exista, esta llamada siempre falla (404 de
+  /// ruta no encontrada, envuelto por ApiClient como un ApiException normal
+  /// vía el filtro global de excepciones del backend) — comportamiento
+  /// esperado, no un error de este método; ver SincronizadorPractica.
+  Future<void> sincronizarLote(
+    List<RegistroPracticaPendiente> registros,
+    String token,
+  ) {
+    return _api.post('/practica/sync', {
+      'registros': registros.map((r) => r.aJson()).toList(),
+    }, token: token);
   }
 }

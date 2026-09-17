@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../core/cola_practica_archivo.dart';
 import '../core/detalle_palabra.dart';
 import '../core/niveles_controller.dart';
 import '../core/paquete_nivel.dart';
+import '../core/sincronizador_practica.dart';
 import 'practica_palabra_screen.dart';
 
 /// RF-31/RF-32 (T-061): punto de entrada de práctica del alumno — todavía
@@ -13,7 +15,12 @@ import 'practica_palabra_screen.dart';
 /// (T-026) usando SOLO el contenido ya guardado en el dispositivo, sin
 /// ninguna llamada de red para cargar la palabra ni su audio.
 class NivelesScreen extends StatefulWidget {
-  const NivelesScreen({super.key, required this.token, this.controller});
+  const NivelesScreen({
+    super.key,
+    required this.token,
+    this.controller,
+    this.sincronizador,
+  });
 
   final String token;
 
@@ -22,17 +29,33 @@ class NivelesScreen extends StatefulWidget {
   /// servicios/almacén/caché reales.
   final NivelesController? controller;
 
+  /// RF-33 (T-062): compartido con la sesión completa del alumno (ver
+  /// HomeScreen, dueño real del ciclo de vida de este objeto) — esta
+  /// pantalla solo lo recibe y lo reenvía a PracticaPalabraScreen al abrir
+  /// una palabra; nunca lo crea con iniciar() ni lo cierra con dispose(),
+  /// justo como palabraDescargada/token de más abajo. null (inyectable solo
+  /// para pruebas, o cualquier navegación futura sin HomeScreen de por
+  /// medio) hace que esta pantalla arme uno propio, sin arrancarlo.
+  final SincronizadorPractica? sincronizador;
+
   @override
   State<NivelesScreen> createState() => _NivelesScreenState();
 }
 
 class _NivelesScreenState extends State<NivelesScreen> {
   late final NivelesController _controller;
+  late final SincronizadorPractica _sincronizador;
 
   @override
   void initState() {
     super.initState();
     _controller = widget.controller ?? NivelesController(token: widget.token);
+    _sincronizador =
+        widget.sincronizador ??
+        SincronizadorPractica(
+          cola: ColaPracticaArchivo(),
+          token: widget.token,
+        );
     _controller.cargarInicial();
   }
 
@@ -102,6 +125,7 @@ class _NivelesScreenState extends State<NivelesScreen> {
           idPalabra: palabra.id,
           token: widget.token,
           palabraDescargada: palabra,
+          sincronizador: _sincronizador,
         ),
       ),
     );

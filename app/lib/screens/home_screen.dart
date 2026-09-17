@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/auth_controller.dart';
+import '../core/cola_practica_archivo.dart';
+import '../core/sincronizador_practica.dart';
 import 'admin_catalogo_screen.dart';
 import 'cambiar_password_screen.dart';
 import 'niveles_screen.dart';
@@ -11,14 +15,53 @@ import 'seguimiento_alumnos_screen.dart';
 /// propia en el backlog (T-026 es solo la práctica de una palabra ya
 /// elegida). Para el profesor, el botón de abajo sí es la pantalla real de
 /// T-027 — es la única entrada a ella, y solo aparece con sesión de profesor.
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key, required this.authController});
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key, required this.authController, this.sincronizador});
 
   final AuthController authController;
 
+  /// Inyectable solo para pruebas — mismo motivo que en el resto de la app.
+  /// En producción, HomeScreen es el ÚNICO lugar que crea este objeto (RF-33,
+  /// T-062): vive mientras dure la sesión del alumno, no una pantalla —
+  /// arranca aquí en initState() y se cierra aquí en dispose(), para que el
+  /// temporizador de reintento cada 5 minutos siga corriendo aunque el
+  /// alumno navegue entre NivelesScreen/PracticaPalabraScreen (ver el
+  /// comentario de SincronizadorPractica).
+  final SincronizadorPractica? sincronizador;
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  SincronizadorPractica? _sincronizador;
+
+  @override
+  void initState() {
+    super.initState();
+    final sesion = widget.authController.sesion!;
+    // Un profesor nunca practica (RF-33 es sobre registros de práctica del
+    // alumno) — no tiene sentido arrancar la cola/temporizador para él.
+    if (!sesion.esProfesor) {
+      _sincronizador =
+          widget.sincronizador ??
+          SincronizadorPractica(
+            cola: ColaPracticaArchivo(),
+            token: sesion.token,
+          );
+      unawaited(_sincronizador!.iniciar());
+    }
+  }
+
+  @override
+  void dispose() {
+    _sincronizador?.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final sesion = authController.sesion!;
+    final sesion = widget.authController.sesion!;
     return Scaffold(
       appBar: AppBar(title: const Text('Spelling Bee')),
       body: Center(
@@ -44,7 +87,7 @@ class HomeScreen extends StatelessWidget {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) =>
-                          AdminCatalogoScreen(authController: authController),
+                          AdminCatalogoScreen(authController: widget.authController),
                     ),
                   ),
                   child: const Text('Administrar catálogo'),
@@ -57,7 +100,7 @@ class HomeScreen extends StatelessWidget {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => SeguimientoAlumnosScreen(
-                        authController: authController,
+                        authController: widget.authController,
                       ),
                     ),
                   ),
@@ -71,7 +114,10 @@ class HomeScreen extends StatelessWidget {
                 FilledButton(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (_) => NivelesScreen(token: sesion.token),
+                      builder: (_) => NivelesScreen(
+                        token: sesion.token,
+                        sincronizador: _sincronizador,
+                      ),
                     ),
                   ),
                   child: const Text('Practicar'),
@@ -94,14 +140,14 @@ class HomeScreen extends StatelessWidget {
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) =>
-                        CambiarPasswordScreen(authController: authController),
+                        CambiarPasswordScreen(authController: widget.authController),
                   ),
                 ),
                 child: const Text('Cambiar mi contraseña'),
               ),
               const SizedBox(height: 12),
               FilledButton.tonal(
-                onPressed: () => authController.cerrarSesion(),
+                onPressed: () => widget.authController.cerrarSesion(),
                 child: const Text('Cerrar sesión'),
               ),
             ],

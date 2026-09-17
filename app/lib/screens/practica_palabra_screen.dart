@@ -3,16 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
+import '../core/cola_practica_archivo.dart';
 import '../core/detalle_palabra.dart';
+import '../core/fecha_local.dart';
 import '../core/formato_tiempo.dart';
 import '../core/grabador_audio.dart';
 import '../core/grabador_audio_record.dart';
+import '../core/id_cliente.dart';
 import '../core/insignia.dart';
 import '../core/mensaje_motivacional.dart';
 import '../core/palabras_service.dart';
 import '../core/practica_service.dart';
+import '../core/registro_practica_pendiente.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
+import '../core/sincronizador_practica.dart';
 
 /// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032) + RF-19 a RF-22
 /// (T-040/T-041/T-042): pantalla de práctica de UNA palabra. Muestra de
@@ -51,6 +56,7 @@ class PracticaPalabraScreen extends StatefulWidget {
     this.grabadorDeletreo,
     this.grabadorOracion,
     this.palabraDescargada,
+    this.sincronizador,
   });
 
   final int idPalabra;
@@ -64,6 +70,17 @@ class PracticaPalabraScreen extends StatefulWidget {
   /// descargas) preserva el comportamiento de siempre: pedir el detalle por
   /// red con palabrasService.
   final DetallePalabra? palabraDescargada;
+
+  /// RF-33 (T-062): motor de la cola offline compartido por toda la sesión
+  /// del alumno (creado una sola vez en HomeScreen, ver ese archivo) — NUNCA
+  /// uno nuevo por pantalla, porque su temporizador de reintento cada 5
+  /// minutos debe seguir corriendo aunque el alumno navegue entre pantallas.
+  /// Igual que palabraDescargada, null (inyectable solo para pruebas, o para
+  /// cualquier navegación futura que no pase por NivelesScreen) hace que
+  /// esta pantalla arme uno propio en initState() — nunca se le llama
+  /// iniciar() aquí porque no le corresponde a esta pantalla arrancar ni
+  /// detener el temporizador compartido.
+  final SincronizadorPractica? sincronizador;
 
   /// RF-22 (T-042): GET /practica/mejor-tiempo/:id necesita sesión — el
   /// backend responde sobre el alumno del propio JWT, no hay id que pasar
@@ -108,6 +125,7 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
   late final ReproductorAudio _reproductor;
   late final DateTime Function() _ahora;
   late final PracticaService _practicaService;
+  late final SincronizadorPractica _sincronizador;
   late final StreamSubscription<EstadoAudio> _suscripcionAudio;
   late final StreamSubscription<Duration> _suscripcionPosicion;
   late final StreamSubscription<Duration?> _suscripcionDuracion;
@@ -149,6 +167,12 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
     _reproductor = widget.reproductor ?? ReproductorAudioJustAudio();
     _ahora = widget.ahora ?? DateTime.now;
     _practicaService = widget.practicaService ?? PracticaService();
+    _sincronizador =
+        widget.sincronizador ??
+        SincronizadorPractica(
+          cola: ColaPracticaArchivo(),
+          token: widget.token,
+        );
     _futuraPalabra = widget.palabraDescargada != null
         ? Future.value(widget.palabraDescargada)
         : _palabrasService.obtenerDetalle(widget.idPalabra);
@@ -249,6 +273,12 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
         fechaLocal: fechaLocalDeHoy,
         token: widget.token,
       );
+      // RF-33 (T-062): un guardado en línea exitoso es, en sí mismo, una
+      // señal real de conectividad — aprovecharla para vaciar cualquier
+      // pendiente más viejo de la cola offline, sin esperar al próximo tick
+      // de 5 minutos. Sin await: no debe retrasar ni el diálogo de insignia
+      // de abajo ni el resto de la pantalla.
+      unawaited(_sincronizador.intentarSincronizar());
       if (!mounted) return;
       // RF-24, punto 1 (T-047): mensaje emergente EN EL MOMENTO en que se
       // completa el nivel — null significa que este intento no lo completó
@@ -256,6 +286,43 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
       if (insigniaOtorgada != null) {
         await _mostrarFelicitacionPorNivelCompletado(insigniaOtorgada);
       }
+    } on ApiException catch (e) {
+      if (e.code != 'SIN_CONEXION') {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo guardar tu práctica. Revisa tu conexión e inténtalo de nuevo.',
+            ),
+          ),
+        );
+        return;
+      }
+      // RF-33 (T-062): sin conexión — el intento NO se pierde, queda en la
+      // cola local (persiste aunque la app se cierre) para reintentarse solo
+      // más adelante, sin que el alumno tenga que hacer nada (ver
+      // SincronizadorPractica). T-063 (el endpoint real de sincronización)
+      // todavía no existe, así que por ahora el registro se queda pendiente
+      // — eso es esperado, no un error de esta tarea.
+      await _sincronizador.encolar(
+        RegistroPracticaPendiente(
+          id: generarIdCliente(),
+          idPalabra: widget.idPalabra,
+          tiempoSegundos: tiempoSegundos,
+          oracionAlumno: _oracionKey.currentState?.texto ?? '',
+          deletreoCorrecto: _deletreoKey.currentState?.esCorrecto ?? false,
+          fechaLocal: formatearFechaLocal(fechaLocalDeHoy),
+        ),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sin conexión: tu práctica se guardó en este dispositivo y se '
+            'enviará automáticamente en cuanto tengas internet.',
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
