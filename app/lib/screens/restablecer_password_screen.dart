@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
 import '../widgets/campo_contrasena.dart';
+import '../widgets/error_backend_banner.dart';
 
 /// Paso 2 de RF-03: pegar el token recibido "por correo" (en dev, el log del
 /// backend — no hay enlace profundo que abra la app directo en esta pantalla
@@ -48,9 +49,15 @@ class _RestablecerPasswordScreenState extends State<RestablecerPasswordScreen> {
       Navigator.of(context).popUntil((ruta) => ruta.isFirst);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // RF-38 (T-065): "Reintentar" vuelve a llamar _restablecer(); el
+      // código y la contraseña nueva ya escritos siguen ahí.
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(context, e, onReintentar: _restablecer);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

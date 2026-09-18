@@ -18,6 +18,7 @@ import '../core/registro_practica_pendiente.dart';
 import '../core/reproductor_audio.dart';
 import '../core/reproductor_audio_just_audio.dart';
 import '../core/sincronizador_practica.dart';
+import '../widgets/error_backend_banner.dart';
 import '../widgets/indicador_sincronizacion.dart';
 
 /// RF-07 (T-026) + RF-12 a RF-18 (T-030/T-031/T-032) + RF-19 a RF-22
@@ -259,12 +260,29 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
       );
     }
 
-    // RF-21/RF-27 (T-045): igual que la comparación de arriba, "best
-    // effort" — el tiempo mostrado en pantalla (RF-21) ya quedó fijo sin
-    // importar si esto falla. deletreo_correcto/oracion_alumno se leen tal
-    // como están AHORA MISMO en cada sección, sin exigir que el alumno haya
-    // verificado el deletreo ni escrito nada en la oración (T-043/T-044 no
-    // bloquean el avance por ninguna de las dos razones).
+    await _guardarPractica(
+      tiempoSegundos: tiempoSegundos,
+      fechaLocalDeHoy: fechaLocalDeHoy,
+    );
+  }
+
+  // RF-21/RF-27 (T-045): "best effort" en el mismo sentido que la
+  // comparación de mejor tiempo de arriba — el tiempo mostrado en pantalla
+  // (RF-21) ya quedó fijo sin importar si esto falla. deletreo_correcto/
+  // oracion_alumno se leen tal como estén EN ESE MOMENTO en cada sección
+  // (no las que había cuando se presionó "Terminé" la primera vez): ninguna
+  // de las dos se bloquea después de terminar la práctica, así que si la
+  // persona sigue editando mientras un reintento (ver más abajo) está
+  // pendiente, lo que se guarda es la versión más reciente — el
+  // comportamiento correcto, no una inconsistencia.
+  //
+  // Separado de _terminarPractica() (RF-38, T-065) precisamente para poder
+  // reintentar SOLO esto — sin repetir el guard de "ya terminada" ni la
+  // comparación de mejor tiempo — cuando falla por backend no disponible.
+  Future<void> _guardarPractica({
+    required int tiempoSegundos,
+    required DateTime fechaLocalDeHoy,
+  }) async {
     try {
       final insigniaOtorgada = await _practicaService.guardarPractica(
         idPalabra: widget.idPalabra,
@@ -288,39 +306,49 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
         await _mostrarFelicitacionPorNivelCompletado(insigniaOtorgada);
       }
     } on ApiException catch (e) {
-      if (e.code != 'SIN_CONEXION') {
+      if (e.code == 'SIN_CONEXION') {
+        // RF-33 (T-062): sin conexión — el intento NO se pierde, queda en
+        // la cola local (persiste aunque la app se cierre) para
+        // reintentarse solo más adelante vía POST /practica/sync (T-063),
+        // sin que el alumno tenga que hacer nada (ver SincronizadorPractica).
+        await _sincronizador.encolar(
+          RegistroPracticaPendiente(
+            id: generarIdCliente(),
+            idPalabra: widget.idPalabra,
+            tiempoSegundos: tiempoSegundos,
+            oracionAlumno: _oracionKey.currentState?.texto ?? '',
+            deletreoCorrecto: _deletreoKey.currentState?.esCorrecto ?? false,
+            fechaLocal: formatearFechaLocal(fechaLocalDeHoy),
+          ),
+        );
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'No se pudo guardar tu práctica. Revisa tu conexión e inténtalo de nuevo.',
-            ),
+        _avisarEnvioPendiente(e);
+        return;
+      }
+      if (!mounted) return;
+      // RF-38 (T-065): un 5xx (el servidor SÍ respondió, pero con un error
+      // de su lado) es distinto de SIN_CONEXION arriba — no se encola
+      // silenciosamente (ese mecanismo es para una práctica que no pudo
+      // llegar al servidor, no para un backend que está respondiendo con
+      // errores); en vez de eso, un mensaje + botón de reintentar que
+      // vuelve a llamar a ESTA función con los MISMOS tiempoSegundos/
+      // fechaLocalDeHoy — el deletreo y la oración siguen visibles e
+      // intactos en pantalla mientras tanto, nada se pierde.
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(
+          context,
+          e,
+          onReintentar: () => _guardarPractica(
+            tiempoSegundos: tiempoSegundos,
+            fechaLocalDeHoy: fechaLocalDeHoy,
           ),
         );
         return;
       }
-      // RF-33 (T-062): sin conexión — el intento NO se pierde, queda en la
-      // cola local (persiste aunque la app se cierre) para reintentarse solo
-      // más adelante, sin que el alumno tenga que hacer nada (ver
-      // SincronizadorPractica). T-063 (el endpoint real de sincronización)
-      // todavía no existe, así que por ahora el registro se queda pendiente
-      // — eso es esperado, no un error de esta tarea.
-      await _sincronizador.encolar(
-        RegistroPracticaPendiente(
-          id: generarIdCliente(),
-          idPalabra: widget.idPalabra,
-          tiempoSegundos: tiempoSegundos,
-          oracionAlumno: _oracionKey.currentState?.texto ?? '',
-          deletreoCorrecto: _deletreoKey.currentState?.esCorrecto ?? false,
-          fechaLocal: formatearFechaLocal(fechaLocalDeHoy),
-        ),
-      );
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Sin conexión: tu práctica se guardó en este dispositivo y se '
-            'enviará automáticamente en cuanto tengas internet.',
+            'No se pudo guardar tu práctica. Revisa tu conexión e inténtalo de nuevo.',
           ),
         ),
       );
@@ -334,6 +362,39 @@ class _PracticaPalabraScreenState extends State<PracticaPalabraScreen> {
         ),
       );
     }
+  }
+
+  // RF-38 (T-065) + RF-33 (T-062): el intento ya está a salvo en la cola
+  // local (nada se pierde), pero eso no exime del mensaje claro y la opción
+  // de reintentar que pide RF-38: antes solo aparecía un SnackBar que se
+  // iba solo, y si el servidor volvía la persona tenía que esperar hasta 5
+  // minutos al temporizador sin poder hacer nada. "Reintentar" fuerza el
+  // envío de la cola AHORA (SincronizadorPractica.sincronizarAhora(),
+  // idempotente: nunca duplica el registro) y, si sigue sin poder, vuelve a
+  // mostrar el aviso.
+  void _avisarEnvioPendiente(ApiException e) {
+    mostrarErrorBackend(
+      context,
+      e,
+      nota:
+          'Tu práctica ya se guardó en este dispositivo y se enviará sola en '
+          'cuanto sea posible.',
+      onReintentar: _reintentarEnvioPendiente,
+    );
+  }
+
+  Future<void> _reintentarEnvioPendiente() async {
+    final error = await _sincronizador.sincronizarAhora();
+    if (!mounted || error == null) return;
+    if (error.esBackendNoDisponible) {
+      _avisarEnvioPendiente(error);
+      return;
+    }
+    // Un 4xx al sincronizar (p. ej. la palabra ya no existe) no se arregla
+    // reintentando: se dice tal cual, sin ofrecer un botón que no serviría.
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(error.message)));
   }
 
   // RF-24, punto 1: "emergente" — un diálogo modal, no un texto embebido en

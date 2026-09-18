@@ -248,6 +248,59 @@ class _ClienteConFalloInicial extends http.BaseClient {
   }
 }
 
+/// RF-38 (T-065): hace fallar la PRIMERA petición POST /admin/palabras con
+/// un 500 (no una falla de red) y deja pasar todo lo demás normal — para
+/// probar que "Reintentar" en el banner reenvía el MISMO texto capturado en
+/// el diálogo, sin tener que volver a abrirlo.
+class _ClienteConFalloEnCrear extends http.BaseClient {
+  _ClienteConFalloEnCrear(this._backend);
+
+  final _BackendSimulado _backend;
+  bool _yaFallo = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.method == 'POST' &&
+        request.url.path == '/admin/palabras' &&
+        !_yaFallo) {
+      _yaFallo = true;
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+    }
+    final respuesta = _backend.responder(request);
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(respuesta.body)),
+      respuesta.statusCode,
+      headers: respuesta.headers,
+    );
+  }
+}
+
+/// RF-38 (T-065): mientras [fallarSegundaPagina] sea true, toda petición de
+/// la página 2 responde 500 (la carga incremental por scroll infinito) —
+/// la página 1 y todo lo demás funcionan normal. Es un interruptor y no
+/// "falla una sola vez" porque el listener del scroll puede volver a
+/// disparar la carga varias veces seguidas mientras la prueba arrastra la
+/// lista hasta el final.
+class _ClienteQueFallaLaSegundaPagina extends http.BaseClient {
+  _ClienteQueFallaLaSegundaPagina(this._backend);
+
+  final _BackendSimulado _backend;
+  bool fallarSegundaPagina = true;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (fallarSegundaPagina && request.url.queryParameters['pagina'] == '2') {
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+    }
+    final respuesta = _backend.responder(request);
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(respuesta.body)),
+      respuesta.statusCode,
+      headers: respuesta.headers,
+    );
+  }
+}
+
 /// Cliente que hace que POST .../audio responda como el backend real
 /// (T-025) cuando rechaza un archivo — mismo contrato {error:{code,message}}
 /// y 400 — para probar que la pantalla muestra ese mensaje en vez de
@@ -451,6 +504,55 @@ void main() {
     expect(find.text('notebook'), findsOneWidget);
     expect(find.text('Incompleta'), findsOneWidget);
   });
+
+  testWidgets(
+    'RF-38 (T-065): si crear() falla por un 5xx, el banner de reintentar reenvía el MISMO texto sin reabrir el diálogo',
+    (tester) async {
+      final backend = _BackendSimulado();
+      final cliente = _ClienteConFalloEnCrear(backend);
+      final auth = await _authConSesion('profesor', cliente);
+
+      await tester.pumpWidget(
+        _envolver(
+          AdminCatalogoScreen(
+            authController: auth,
+            controller: _controladorDePrueba(auth, cliente),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.add));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Texto (en inglés)'),
+        'notebook',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
+      await tester.pumpAndSettle();
+
+      // El diálogo YA se cerró (Guardar lo hace antes de llamar a crear(),
+      // ver _DialogoPalabra) — el primer intento de red falló con 500.
+      expect(find.text('Agregar palabra'), findsNothing);
+      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(
+        find.text('notebook'),
+        findsNothing,
+        reason: 'todavía no se guardó — el primer intento falló',
+      );
+
+      await tester.tap(find.widgetWithText(TextButton, 'Reintentar'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialBanner), findsNothing);
+      expect(
+        find.text('notebook'),
+        findsOneWidget,
+        reason: 'Reintentar mandó el MISMO texto ya capturado, sin volver a abrir el diálogo',
+      );
+    },
+  );
 
   testWidgets(
     'editar palabra: el diálogo llega prellenado y guarda los cambios',
@@ -727,6 +829,76 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('palabra-20'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RF-38 (T-065): si la carga incremental falla por un 5xx, avisa con el banner (antes fallaba en silencio) sin perder la lista ya cargada, y Reintentar carga la página faltante',
+    (tester) async {
+      final palabras = List.generate(
+        25,
+        (i) => {
+          'id': i + 1,
+          'texto': 'palabra-$i',
+          'id_nivel': 1,
+          'significado_es': null,
+          'oracion_ejemplo': null,
+          'url_audio': null,
+          'completa': false,
+          'oculta': false,
+        },
+      );
+      final cliente = _ClienteQueFallaLaSegundaPagina(
+        _BackendSimulado(palabrasIniciales: palabras),
+      );
+      final auth = await _authConSesion('profesor', cliente);
+
+      await tester.pumpWidget(
+        _envolver(
+          AdminCatalogoScreen(
+            authController: auth,
+            controller: _controladorDePrueba(auth, cliente),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final lista = find.byType(ListView);
+      for (var i = 0; i < 6; i++) {
+        await tester.drag(lista, const Offset(0, -300));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(find.text('Ocurrió un error inesperado.'), findsOneWidget);
+      expect(
+        find.text('palabra-0'),
+        findsNothing,
+        reason: 'ya se hizo scroll hacia abajo — el primer elemento salió de la vista, no de la lista',
+      );
+      expect(tester.takeException(), isNull);
+
+      // El backend "se recupera": Reintentar debe traer la página 2.
+      cliente.fallarSegundaPagina = false;
+      await tester.tap(find.widgetWithText(TextButton, 'Reintentar'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialBanner), findsNothing);
+      for (
+        var i = 0;
+        i < 10 && find.text('palabra-24').evaluate().isEmpty;
+        i++
+      ) {
+        await tester.drag(lista, const Offset(0, -300));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(
+        find.text('palabra-24'),
+        findsOneWidget,
+        reason: 'la página 2 (palabras 20 a 24) llegó tras Reintentar',
+      );
     },
   );
 }

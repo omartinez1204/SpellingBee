@@ -65,7 +65,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 - [x] **T-062** Flutter: cola local de registros de práctica generados offline; sincronización automática al detectar conectividad, con reintento cada 5 minutos hasta lograrlo, sin perder registros (RF-33).
 - [x] **T-063** `POST /practica/sync` (RF-33): recepción en lote, idempotente por id generado en cliente.
 - [x] **T-064** Flutter: indicador visual en línea/sin conexión y de registros pendientes, con confirmación transitoria al sincronizar con éxito (RF-34).
-- [ ] **T-065** Manejo uniforme de "backend no disponible" en el cliente: mensaje de error + reintentar, sin perder lo ya capturado en el formulario (RF-38).
+- [x] **T-065** Manejo uniforme de "backend no disponible" en el cliente: mensaje de error + reintentar, sin perder lo ya capturado en el formulario (RF-38).
 
 ## Fase 7 — No funcionales transversales
 

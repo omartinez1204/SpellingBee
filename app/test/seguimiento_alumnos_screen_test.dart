@@ -224,6 +224,30 @@ class _ClienteConFalloInicial extends http.BaseClient {
   }
 }
 
+/// RF-38 (T-065): mientras [fallarSegundaPagina] sea true, toda petición de
+/// la página 2 (carga incremental por scroll) responde 500; lo demás
+/// funciona normal. Interruptor y no "falla una sola vez": el listener del
+/// scroll puede volver a disparar la carga varias veces seguidas.
+class _ClienteQueFallaLaSegundaPagina extends http.BaseClient {
+  _ClienteQueFallaLaSegundaPagina(this._backend);
+
+  final _BackendSimulado _backend;
+  bool fallarSegundaPagina = true;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (fallarSegundaPagina && request.url.queryParameters['pagina'] == '2') {
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+    }
+    final respuesta = _backend.responder(request);
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(respuesta.body)),
+      respuesta.statusCode,
+      headers: respuesta.headers,
+    );
+  }
+}
+
 Map<String, dynamic> _alumno({
   required int id,
   required String matricula,
@@ -572,6 +596,67 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('alumno-20 '), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RF-38 (T-065): si la carga incremental falla por un 5xx, avisa con el banner (antes fallaba en silencio) y Reintentar carga la página faltante',
+    (tester) async {
+      final alumnos = List.generate(
+        25,
+        (i) => _alumno(id: i + 1, matricula: 'M$i', nombre: 'alumno-$i'),
+      );
+      final cliente = _ClienteQueFallaLaSegundaPagina(
+        _BackendSimulado(alumnosIniciales: alumnos),
+      );
+      final auth = await _authConSesion('profesor', cliente);
+
+      await tester.pumpWidget(
+        _envolver(
+          SeguimientoAlumnosScreen(
+            authController: auth,
+            controller: _controladorDePrueba(auth, cliente),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Las filas de esta pantalla son más altas que las del catálogo: se
+      // arrastra hasta que el listener del scroll dispare la carga (y falle).
+      final lista = find.byType(ListView);
+      for (
+        var i = 0;
+        i < 15 && find.byType(MaterialBanner).evaluate().isEmpty;
+        i++
+      ) {
+        await tester.drag(lista, const Offset(0, -300));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialBanner), findsOneWidget);
+      expect(find.text('Ocurrió un error inesperado.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      cliente.fallarSegundaPagina = false;
+      await tester.tap(find.widgetWithText(TextButton, 'Reintentar'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MaterialBanner), findsNothing);
+      for (
+        var i = 0;
+        i < 10 && find.textContaining('alumno-24 ').evaluate().isEmpty;
+        i++
+      ) {
+        await tester.drag(lista, const Offset(0, -300));
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('alumno-24 '),
+        findsOneWidget,
+        reason: 'la página 2 (alumnos 20 a 24) llegó tras Reintentar',
+      );
     },
   );
 

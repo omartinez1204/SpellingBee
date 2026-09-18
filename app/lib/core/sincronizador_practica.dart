@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'api_exception.dart';
 import 'cola_practica.dart';
 import 'monitor_conectividad.dart';
 import 'monitor_conectividad_connectivity_plus.dart';
@@ -63,6 +64,7 @@ class SincronizadorPractica extends ChangeNotifier {
   Timer? _temporizador;
   StreamSubscription<EstadoConexion>? _suscripcionConectividad;
   bool _sincronizando = false;
+  Completer<void>? _intentoEnCurso;
 
   int _pendientes = 0;
 
@@ -145,10 +147,41 @@ class SincronizadorPractica extends ChangeNotifier {
   /// marcarla.
   Future<void> intentarSincronizar() async {
     if (_sincronizando) return;
+    await _sincronizarUnaVez();
+  }
+
+  /// RF-38 (T-065): reintento MANUAL de lo que quedó en la cola — lo usa el
+  /// botón "Reintentar" que aparece cuando guardar una práctica no llegó al
+  /// servidor. A diferencia de intentarSincronizar() (que descarta la
+  /// llamada si ya hay un envío en vuelo, y traga cualquier error):
+  ///  - ESPERA a que termine un envío en vuelo (típicamente el que lanzó
+  ///    encolar() un instante antes) en vez de descartarse, para que el
+  ///    resultado que regresa refleje el estado real de la cola y no el de
+  ///    una llamada ignorada; y
+  ///  - REGRESA el error del intento (null si la cola quedó vacía) para que
+  ///    quien lo llamó pueda volver a mostrar el mensaje si sigue sin poder
+  ///    enviar, en vez de que el botón parezca no haber hecho nada.
+  ///
+  /// Sigue siendo el mismo envío idempotente de siempre (T-063): reintentar
+  /// las veces que sea necesario nunca duplica un registro.
+  Future<ApiException?> sincronizarAhora() async {
+    while (_intentoEnCurso != null) {
+      await _intentoEnCurso!.future;
+    }
+    return _sincronizarUnaVez();
+  }
+
+  /// Cuerpo compartido por intentarSincronizar() y sincronizarAhora(). Marca
+  /// _sincronizando de forma síncrona (antes del primer await) — ver el
+  /// comentario de intentarSincronizar(). Regresa el error del intento, o
+  /// null si no hubo nada que enviar o el envío tuvo éxito.
+  Future<ApiException?> _sincronizarUnaVez() async {
     _sincronizando = true;
+    final enCurso = _intentoEnCurso = Completer<void>();
+    ApiException? errorDelIntento;
     try {
       final pendientesActuales = await _cola.listarPendientes();
-      if (pendientesActuales.isEmpty) return;
+      if (pendientesActuales.isEmpty) return null;
 
       await _practicaService.sincronizarLote(pendientesActuales, _token);
       // Solo se elimina lo que de verdad viajó en ESTE lote — un registro
@@ -162,14 +195,28 @@ class SincronizadorPractica extends ChangeNotifier {
       // verdad se envió y se limpió arriba — nunca a un intento vacío (ya se
       // salió arriba) ni a uno fallido (ver catch).
       _controladorSincronizacionExitosa.add(pendientesActuales.length);
-    } catch (_) {
+      return null;
+    } on ApiException catch (e) {
       // Sin conexión, backend no disponible, o cualquier otro fallo: la
       // cola se queda tal cual. El próximo tick de 5 minutos (o el próximo
       // encolar()/iniciar()) vuelve a intentar — sin intervención del
-      // alumno, tal como pide el criterio de RF-33.
+      // alumno, tal como pide el criterio de RF-33. El error solo se
+      // devuelve (no se propaga) para quien lo pidió, ver sincronizarAhora().
+      errorDelIntento = e;
+      return e;
+    } catch (_) {
+      // Mismo criterio para un fallo que no vino de la API (p. ej. leer o
+      // borrar de la cola en disco): la cola se queda tal cual.
+      errorDelIntento = const ApiException(
+        'ERROR',
+        'No se pudo enviar tu práctica. Inténtalo de nuevo en unos minutos.',
+      );
+      return errorDelIntento;
     } finally {
       _sincronizando = false;
       await _actualizarConteo();
+      _intentoEnCurso = null;
+      enCurso.complete();
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
 import '../widgets/campo_contrasena.dart';
+import '../widgets/error_backend_banner.dart';
 
 /// RF-35 (cambio voluntario) y RF-36 (cambio forzado en el primer login).
 ///
@@ -63,9 +64,16 @@ class _CambiarPasswordScreenState extends State<CambiarPasswordScreen> {
       }
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // RF-38 (T-065): las 3 contraseñas escritas siguen en sus controllers
+      // sin importar qué pase aquí — "Reintentar" solo vuelve a llamar
+      // _cambiar().
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(context, e, onReintentar: _cambiar);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

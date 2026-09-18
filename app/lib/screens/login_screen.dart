@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
 import '../widgets/campo_contrasena.dart';
+import '../widgets/error_backend_banner.dart';
 import 'recuperar_password_screen.dart';
 import 'registro_screen.dart';
 
@@ -41,9 +42,18 @@ class _LoginScreenState extends State<LoginScreen> {
       // decide la pantalla siguiente (Home o cambio de contraseña forzado).
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // RF-38 (T-065): un 5xx o una falla de red muestran el mensaje +
+      // "Reintentar" (que vuelve a llamar esta misma función, con lo que ya
+      // se escribió en los campos intacto — nada aquí los toca); cualquier
+      // otro error (credenciales inválidas, etc.) conserva el SnackBar de
+      // siempre, porque "reintentar" tal cual no serviría de nada ahí.
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(context, e, onReintentar: _iniciarSesion);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

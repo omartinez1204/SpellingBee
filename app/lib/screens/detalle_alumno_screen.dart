@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../core/api_exception.dart';
 import '../core/carreras.dart';
 import '../core/detalle_alumno_controller.dart';
 import '../core/formato_tiempo.dart';
 import '../core/intento_practica.dart';
+import '../widgets/error_backend_banner.dart';
 
 /// RF-29 (T-053, CU-03 paso 4): detalle de un alumno — palabra, tiempo y
 /// oración de cada intento registrado, paginado (RNF-12) con scroll infinito
@@ -66,7 +70,24 @@ class _DetalleAlumnoScreenState extends State<DetalleAlumnoScreen> {
   void _alLlegarAlFinal() {
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      _controller.cargarMas();
+      unawaited(_cargarMas());
+    }
+  }
+
+  // RF-38 (T-065): ver el comentario equivalente en AdminCatalogoScreen —
+  // antes de esto, una carga incremental fallida quedaba en silencio total.
+  Future<void> _cargarMas() async {
+    try {
+      await _controller.cargarMas();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(context, e, onReintentar: _cargarMas);
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 

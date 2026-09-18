@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../core/alumno_con_avance.dart';
+import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
 import '../core/carreras.dart';
 import '../core/detalle_alumno_controller.dart';
 import '../core/nivel.dart';
 import '../core/seguimiento_alumnos_controller.dart';
+import '../widgets/error_backend_banner.dart';
 import 'detalle_alumno_screen.dart';
 
 /// RF-28, RF-30 (T-053, CU-03): panel docente de seguimiento — lista de
@@ -70,7 +74,28 @@ class _SeguimientoAlumnosScreenState extends State<SeguimientoAlumnosScreen> {
     if (controller == null) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      controller.cargarMas();
+      unawaited(_cargarMas(controller));
+    }
+  }
+
+  // RF-38 (T-065): ver el comentario equivalente en AdminCatalogoScreen —
+  // antes de esto, una carga incremental fallida quedaba en silencio total.
+  Future<void> _cargarMas(SeguimientoAlumnosController controller) async {
+    try {
+      await controller.cargarMas();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(
+          context,
+          e,
+          onReintentar: () => _cargarMas(controller),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
+import '../widgets/error_backend_banner.dart';
 import 'restablecer_password_screen.dart';
 
 /// Paso 1 de RF-03: pedir el correo de restablecimiento. El backend (T-013)
@@ -41,9 +42,15 @@ class _RecuperarPasswordScreenState extends State<RecuperarPasswordScreen> {
       setState(() => _solicitudEnviada = true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // RF-38 (T-065): "Reintentar" vuelve a llamar _solicitar(); lo escrito
+      // en el campo de matrícula/usuario sigue ahí sin importar qué pase.
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(context, e, onReintentar: _solicitar);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

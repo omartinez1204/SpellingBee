@@ -5,10 +5,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
+import 'package:spelling_bee/core/cola_practica.dart';
 import 'package:spelling_bee/core/grabador_audio.dart';
+import 'package:spelling_bee/core/monitor_conectividad.dart';
 import 'package:spelling_bee/core/palabras_service.dart';
 import 'package:spelling_bee/core/practica_service.dart';
+import 'package:spelling_bee/core/registro_practica_pendiente.dart';
 import 'package:spelling_bee/core/reproductor_audio.dart';
+import 'package:spelling_bee/core/sincronizador_practica.dart';
 import 'package:spelling_bee/screens/practica_palabra_screen.dart';
 
 // Sin librería de mocking: un http.Client falso que regresa una respuesta
@@ -58,6 +62,101 @@ class _ClienteHttpQueFallaSoloEnPost extends http.BaseClient {
       headers: {'content-type': 'application/json'},
     );
   }
+}
+
+// RF-38 (T-065): variante que falla con 500 SOLO la PRIMERA vez que recibe
+// un POST — para probar que el botón "Reintentar" del banner de backend-no-
+// disponible de verdad reenvía la MISMA petición (mismo tiempo, misma
+// oración, mismo resultado de deletreo) y esta vez sí se guarda.
+class _ClienteHttpQuePrimeroFallaLuegoOk extends http.BaseClient {
+  final List<http.Request> peticionesPost = [];
+  var _primeraVez = true;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request.method != 'POST') {
+      final cuerpo = utf8.encode(jsonEncode({'mejor_tiempo_segundos': null}));
+      return http.StreamedResponse(
+        Stream.value(cuerpo),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (request is http.Request) peticionesPost.add(request);
+    if (_primeraVez) {
+      _primeraVez = false;
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+    }
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(jsonEncode({'insignia_otorgada': null}))),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+// RF-38 (T-065): un servidor que se cae y vuelve. Mientras [caido] sea true,
+// TODA petición falla con una excepción de transporte (lo que ve la app con
+// el backend apagado: conexión rechazada), sin llegar a ninguna respuesta;
+// al ponerlo en false responde normal. Graba las peticiones para poder
+// verificar QUÉ se reintentó.
+class _ClienteServidorQueSeCaeYVuelve extends http.BaseClient {
+  bool caido = true;
+  final List<http.Request> peticiones = [];
+
+  Iterable<http.Request> get envios =>
+      peticiones.where((p) => p.url.path == '/practica/sync');
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (request is http.Request) peticiones.add(request);
+    if (caido) throw Exception('conexión rechazada (simulada)');
+    if (request.method == 'GET') {
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(jsonEncode({'mejor_tiempo_segundos': null}))),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    final cuerpo = request.url.path == '/practica/sync'
+        ? '{}'
+        : jsonEncode({'insignia_otorgada': null});
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(cuerpo)),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
+class _ColaEnMemoria implements ColaPractica {
+  final List<RegistroPracticaPendiente> registros = [];
+
+  @override
+  Future<void> agregar(RegistroPracticaPendiente registro) async {
+    registros.add(registro);
+  }
+
+  @override
+  Future<List<RegistroPracticaPendiente>> listarPendientes() async =>
+      List.of(registros);
+
+  @override
+  Future<void> eliminar(String id) async {
+    registros.removeWhere((r) => r.id == id);
+  }
+}
+
+class _MonitorFijo implements MonitorConectividad {
+  _MonitorFijo(this._estado);
+
+  final EstadoConexion _estado;
+
+  @override
+  Future<EstadoConexion> obtenerActual() async => _estado;
+
+  @override
+  Stream<EstadoConexion> get cambios => const Stream.empty();
 }
 
 // T-030: reproductor falso — sin esto, la pantalla construiría un
@@ -1910,7 +2009,7 @@ void main() {
     );
 
     testWidgets(
-      'si falla el guardado, avisa sin tronar y no pierde el tiempo ni el mensaje motivacional ya mostrados',
+      'RF-38 (T-065): si el guardado falla por un 5xx, muestra el banner de reintentar y no pierde el tiempo ni el mensaje motivacional ya mostrados',
       (tester) async {
         final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
         final servicio = PalabrasService(
@@ -1945,13 +2044,87 @@ void main() {
         // RF-22 sí funcionó (el GET no falla en este falso) — RF-21/RF-27
         // fallar no debe arrastrar consigo lo que ya funcionó.
         expect(find.textContaining('primer intento'), findsOneWidget);
-        expect(
-          find.text(
-            'No se pudo guardar tu práctica. Revisa tu conexión e inténtalo de nuevo.',
-          ),
-          findsOneWidget,
-        );
+        // RF-38: un 5xx (a diferencia de SIN_CONEXION, que se encola sin
+        // avisar con un botón) muestra el banner de "backend no disponible"
+        // con su botón de reintentar — no el SnackBar genérico de cualquier
+        // otro error.
+        expect(find.byType(MaterialBanner), findsOneWidget);
+        expect(find.text('Ocurrió un error inesperado.'), findsOneWidget);
+        expect(find.widgetWithText(TextButton, 'Reintentar'), findsOneWidget);
         expect(find.text('00:03'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'RF-38 (T-065): tocar Reintentar en el banner reenvía el mismo intento (mismo tiempo, oración y deletreo) y esta vez se guarda',
+      (tester) async {
+        final clientePalabras = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(
+          apiClient: ApiClient(httpClient: clientePalabras),
+        );
+        final clientePractica = _ClienteHttpQuePrimeroFallaLuegoOk();
+        final practicaService = PracticaService(
+          apiClient: ApiClient(httpClient: clientePractica),
+        );
+        final reloj = _RelojFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: _ReproductorFalso(),
+              ahora: reloj.ahora,
+              practicaService: practicaService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byType(TextField),
+          'A payment for my business.',
+        );
+        await tester.pump();
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+        reloj.avanzar(const Duration(seconds: 5));
+        await tester.pump(const Duration(seconds: 5));
+        await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+        await tester.pumpAndSettle();
+
+        expect(
+          clientePractica.peticionesPost,
+          hasLength(1),
+          reason: 'primer intento: falló con 500',
+        );
+        expect(find.byType(MaterialBanner), findsOneWidget);
+        // RF-38: mientras el banner está visible, el formulario sigue ahí
+        // debajo — la oración escrita sigue en pantalla, no se limpió.
+        expect(find.text('A payment for my business.'), findsOneWidget);
+
+        await _tocar(tester, find.widgetWithText(TextButton, 'Reintentar'));
+        await tester.pumpAndSettle();
+
+        expect(
+          clientePractica.peticionesPost,
+          hasLength(2),
+          reason: 'Reintentar debió mandar OTRA petición, no reusar la que falló',
+        );
+        final segundoIntento =
+            jsonDecode(clientePractica.peticionesPost.last.body)
+                as Map<String, dynamic>;
+        expect(
+          segundoIntento['oracion_alumno'],
+          'A payment for my business.',
+          reason: 'debe reenviar la MISMA oración, sin que nadie tuviera que volver a escribirla',
+        );
+        expect(segundoIntento['tiempo_segundos'], 5);
+        expect(
+          find.byType(MaterialBanner),
+          findsNothing,
+          reason: 'el segundo intento sí se guardó — el banner ya no debe seguir mostrándose',
+        );
       },
     );
   });
@@ -2237,6 +2410,191 @@ void main() {
         // petición nueva al mismo cliente HTTP que sí usa el resto de la
         // pantalla — prueba directa de que "Escúchate" nunca llama a la red.
         expect(cliente.peticiones.length, peticionesAntes);
+      },
+    );
+  });
+
+  // RF-38 (T-065) + RF-33 (T-062): guardar la práctica con el servidor
+  // CAÍDO (la app no llega a ninguna respuesta). El intento se guarda en la
+  // cola local (RF-33) y, además, RF-38 exige mensaje claro + opción de
+  // reintentar sin perder lo capturado.
+  group('servidor caído al guardar la práctica (RF-38, T-065)', () {
+    ({
+      _ClienteServidorQueSeCaeYVuelve servidor,
+      _ColaEnMemoria cola,
+      SincronizadorPractica sincronizador,
+      _RelojFalso reloj,
+      Widget pantalla,
+    })
+    armar({EstadoConexion dispositivo = EstadoConexion.enLinea}) {
+      final servidor = _ClienteServidorQueSeCaeYVuelve();
+      final monitor = _MonitorFijo(dispositivo);
+      final cola = _ColaEnMemoria();
+      PracticaService servicioHaciaElServidor() => PracticaService(
+        apiClient: ApiClient(httpClient: servidor, monitorConectividad: monitor),
+      );
+      final sincronizador = SincronizadorPractica(
+        cola: cola,
+        token: 'token-de-prueba',
+        practicaService: servicioHaciaElServidor(),
+        monitorConectividad: monitor,
+      );
+      addTearDown(sincronizador.dispose);
+      final reloj = _RelojFalso();
+      final pantalla = PracticaPalabraScreen(
+        idPalabra: 1,
+        token: 'token-de-prueba',
+        palabrasService: PalabrasService(
+          apiClient: ApiClient(
+            httpClient: _ClienteHttpDePrueba(_palabraConAudio),
+          ),
+        ),
+        reproductor: _ReproductorFalso(),
+        ahora: reloj.ahora,
+        practicaService: servicioHaciaElServidor(),
+        sincronizador: sincronizador,
+      );
+      return (
+        servidor: servidor,
+        cola: cola,
+        sincronizador: sincronizador,
+        reloj: reloj,
+        pantalla: pantalla,
+      );
+    }
+
+    // Deletrea "business" en el orden correcto, escribe una oración y
+    // termina la práctica — todo con el servidor ya caído.
+    Future<void> practicarYTerminar(WidgetTester tester, _RelojFalso reloj) async {
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 8; i++) {
+        await _tocar(tester, find.byKey(ValueKey('ficha-disponible-$i')));
+      }
+      await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
+      await tester.enterText(
+        find.byType(TextField),
+        'I run my own business.',
+      );
+      await tester.pump();
+      await _tocar(tester, find.widgetWithText(FilledButton, 'Iniciar'));
+      // DateTime.now() no avanza con pump(): el reloj falso, a mano.
+      reloj.avanzar(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 3));
+      await _tocar(tester, find.widgetWithText(FilledButton, 'Terminé'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'con red en el dispositivo: avisa que el SERVIDOR no responde, ofrece Reintentar, conserva deletreo y oración, y el intento queda a salvo en la cola',
+      (tester) async {
+        final e = armar();
+        await tester.pumpWidget(_envolver(e.pantalla));
+
+        await practicarYTerminar(tester, e.reloj);
+
+        expect(find.byType(MaterialBanner), findsOneWidget);
+        expect(
+          find.textContaining('El servidor no responde en este momento.'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Tu práctica ya se guardó en este dispositivo'),
+          findsOneWidget,
+          reason: 'el aviso no debe parecer "se perdió": el intento está en la cola',
+        );
+        expect(find.widgetWithText(TextButton, 'Reintentar'), findsOneWidget);
+        // RF-38: lo capturado sigue ahí, en pantalla.
+        expect(find.text('I run my own business.'), findsOneWidget);
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+        // RF-33: y a salvo en la cola local.
+        expect(e.cola.registros, hasLength(1));
+        expect(e.cola.registros.single.oracionAlumno, 'I run my own business.');
+        expect(e.cola.registros.single.deletreoCorrecto, isTrue);
+        expect(e.cola.registros.single.tiempoSegundos, 3);
+      },
+    );
+
+    testWidgets(
+      'sin red en el dispositivo: el mismo aviso dice que NO HAY CONEXIÓN a internet (no que el servidor no responde)',
+      (tester) async {
+        final e = armar(dispositivo: EstadoConexion.sinConexion);
+        await tester.pumpWidget(_envolver(e.pantalla));
+
+        await practicarYTerminar(tester, e.reloj);
+
+        expect(
+          find.textContaining('No tienes conexión a internet.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('El servidor no responde'), findsNothing);
+        expect(find.widgetWithText(TextButton, 'Reintentar'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Reintentar con el servidor TODAVÍA caído vuelve a avisar (no se queda en silencio) y no duplica el registro en la cola',
+      (tester) async {
+        final e = armar();
+        await tester.pumpWidget(_envolver(e.pantalla));
+        await practicarYTerminar(tester, e.reloj);
+        final enviosAntes = e.servidor.envios.length;
+
+        await _tocar(tester, find.widgetWithText(TextButton, 'Reintentar'));
+        await tester.pumpAndSettle();
+
+        expect(
+          e.servidor.envios.length,
+          greaterThan(enviosAntes),
+          reason: 'Reintentar debe intentar el envío de verdad',
+        );
+        expect(find.byType(MaterialBanner), findsOneWidget);
+        expect(find.textContaining('El servidor no responde'), findsOneWidget);
+        expect(e.cola.registros, hasLength(1));
+        expect(find.text('I run my own business.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'Reintentar cuando el servidor VUELVE: manda el MISMO registro (mismo id, oración y deletreo) a /practica/sync, vacía la cola y quita el aviso — sin salir ni reiniciar la pantalla',
+      (tester) async {
+        final e = armar();
+        await tester.pumpWidget(_envolver(e.pantalla));
+        await practicarYTerminar(tester, e.reloj);
+        final idEnCola = e.cola.registros.single.id;
+
+        // Con el servidor caído también falló la comparación de mejor tiempo
+        // (RF-22) y su SnackBar sigue visible: ScaffoldMessenger muestra uno
+        // a la vez, así que la confirmación de T-064 quedaría ENCOLADA detrás
+        // hasta que ese se cierre. Se limpia para poder verla de inmediato.
+        ScaffoldMessenger.of(
+          tester.element(find.byType(Scaffold).first),
+        ).clearSnackBars();
+        await tester.pumpAndSettle();
+
+        e.servidor.caido = false;
+        await _tocar(tester, find.widgetWithText(TextButton, 'Reintentar'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final envio = e.servidor.envios.last;
+        final enviados =
+            (jsonDecode(envio.body) as Map<String, dynamic>)['registros']
+                as List<dynamic>;
+        expect(enviados, hasLength(1));
+        final registro = enviados.single as Map<String, dynamic>;
+        expect(registro['id'], idEnCola);
+        expect(registro['oracion_alumno'], 'I run my own business.');
+        expect(registro['deletreo_correcto'], isTrue);
+        expect(registro['tiempo_segundos'], 3);
+
+        expect(e.cola.registros, isEmpty);
+        expect(find.byType(MaterialBanner), findsNothing);
+        // Misma pantalla, mismo estado: no se reinició ni se fue a otro lado.
+        expect(find.byType(PracticaPalabraScreen), findsOneWidget);
+        expect(find.text('I run my own business.'), findsOneWidget);
+        expect(find.textContaining('¡Correcto!'), findsOneWidget);
+        // RF-34 (T-064) confirma la sincronización de forma transitoria.
+        expect(find.text('Se sincronizó 1 práctica pendiente.'), findsOneWidget);
       },
     );
   });

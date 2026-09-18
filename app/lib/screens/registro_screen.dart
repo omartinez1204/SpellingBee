@@ -4,6 +4,7 @@ import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
 import '../core/carreras.dart';
 import '../widgets/campo_contrasena.dart';
+import '../widgets/error_backend_banner.dart';
 
 // T-074 / RF-37: texto PROVISIONAL. El contenido definitivo lo redacta el
 // área jurídica de NovaUniversitas (RNF-11) — no es un aviso de privacidad
@@ -76,9 +77,16 @@ class _RegistroScreenState extends State<RegistroScreen> {
       Navigator.of(context).pop();
     } on ApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      // RF-38 (T-065): los 8 campos siguen escritos en sus controllers pase
+      // lo que pase aquí abajo — "Reintentar" solo vuelve a llamar
+      // _registrar(), sin necesidad de volver a escribir nada.
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(context, e, onReintentar: _registrar);
+      } else {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }

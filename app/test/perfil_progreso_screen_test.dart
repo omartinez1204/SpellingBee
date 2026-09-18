@@ -41,6 +41,35 @@ class _ClienteHttpQueFalla extends http.BaseClient {
   }
 }
 
+/// RF-38 (T-065): falla (500) la primera vez que se le pide CUALQUIER ruta,
+/// y responde normal después — para probar que el botón "Reintentar" (antes
+/// inexistente en esta pantalla) de verdad vuelve a cargar y esta vez
+/// muestra el progreso.
+class _ClienteHttpQueFallaLuegoOk extends http.BaseClient {
+  _ClienteHttpQueFallaLuegoOk(this._respuestasPorRuta);
+
+  final Map<String, dynamic> _respuestasPorRuta;
+  bool _yaFallo = false;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!_yaFallo) {
+      _yaFallo = true;
+      return http.StreamedResponse(Stream.value(utf8.encode('{}')), 500);
+    }
+    final cuerpoJson = _respuestasPorRuta[request.url.path];
+    if (cuerpoJson == null) {
+      throw StateError('Ruta no configurada en la prueba: ${request.url.path}');
+    }
+    final cuerpo = utf8.encode(jsonEncode(cuerpoJson));
+    return http.StreamedResponse(
+      Stream.value(cuerpo),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  }
+}
+
 const _tresNiveles = [
   {'id': 1, 'nombre': 'Fácil', 'orden': 1},
   {'id': 2, 'nombre': 'Intermedio', 'orden': 2},
@@ -181,6 +210,46 @@ void main() {
       // error.message) — ApiClient lo traduce al mensaje genérico de
       // ApiException, que la pantalla sí sabe mostrar (branch `is ApiException`).
       expect(find.text('Ocurrió un error inesperado.'), findsOneWidget);
+      // RF-38 (T-065): antes esta pantalla no ofrecía ninguna forma de
+      // reintentar — ver la prueba siguiente para el botón funcionando.
+      expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
     });
+
+    testWidgets(
+      'RF-38 (T-065): tocar Reintentar tras una falla vuelve a cargar y esta vez muestra el progreso',
+      (tester) async {
+        final clienteCompartido = _ClienteHttpQueFallaLuegoOk({
+          '/niveles': _tresNiveles,
+          '/progreso/insignias': [],
+        });
+        final nivelesService = NivelesService(
+          apiClient: ApiClient(httpClient: clienteCompartido),
+        );
+        final insigniasService = InsigniasService(
+          apiClient: ApiClient(httpClient: clienteCompartido),
+        );
+
+        await tester.pumpWidget(
+          _envolver(
+            PerfilProgresoScreen(
+              token: 'token-de-prueba',
+              nivelesService: nivelesService,
+              insigniasService: insigniasService,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Ocurrió un error inesperado.'), findsOneWidget);
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Ocurrió un error inesperado.'), findsNothing);
+        expect(find.text('Fácil'), findsOneWidget);
+        expect(find.text('Intermedio'), findsOneWidget);
+        expect(find.text('Difícil'), findsOneWidget);
+      },
+    );
   });
 }

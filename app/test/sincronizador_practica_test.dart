@@ -104,6 +104,15 @@ class _ClienteConControlManual extends http.BaseClient {
   }
 }
 
+/// RF-38 (T-065): falla de transporte real (sin llegar a ninguna respuesta) —
+/// lo que ve la app con el servidor apagado (conexión rechazada).
+class _ClienteQueLanzaExcepcionDeRed extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    throw Exception('conexión rechazada (simulada)');
+  }
+}
+
 /// T-064 (RF-34): falso 100% en memoria — mismo motivo que los http.BaseClient
 /// falsos de arriba: sin esto, SincronizadorPractica.iniciar() construiría un
 /// MonitorConectividadReal de verdad, que toca un canal de plataforma
@@ -578,4 +587,136 @@ void main() {
       expect(cantidades, isEmpty);
     },
   );
+
+  // RF-38 (T-065): reintento manual — el botón "Reintentar" que aparece
+  // cuando guardar una práctica no llegó al servidor.
+  group('sincronizarAhora() (RF-38, T-065)', () {
+    SincronizadorPractica crearSincronizador(
+      ColaPracticaArchivo cola,
+      http.Client cliente,
+    ) {
+      final sincronizador = SincronizadorPractica(
+        cola: cola,
+        token: 'token-de-prueba',
+        practicaService: PracticaService(
+          apiClient: ApiClient(
+            httpClient: cliente,
+            monitorConectividad: _MonitorConectividadFalso(),
+          ),
+        ),
+        monitorConectividad: _MonitorConectividadFalso(),
+      );
+      addTearDown(sincronizador.dispose);
+      return sincronizador;
+    }
+
+    test('con la cola vacía regresa null y no manda ninguna petición', () async {
+      final backend = _BackendSyncSimulado();
+      final sincronizador = crearSincronizador(
+        crearCola(),
+        _ClienteHttpDePrueba(backend),
+      );
+
+      final error = await sincronizador.sincronizarAhora();
+
+      expect(error, isNull);
+      expect(backend.lotesRecibidos, isEmpty);
+    });
+
+    test(
+      'si el envío tiene éxito, regresa null, vacía la cola y emite la confirmación de RF-34',
+      () async {
+        final cola = crearCola();
+        await cola.agregar(registroDePrueba(id: 'id-1'));
+        final backend = _BackendSyncSimulado();
+        final sincronizador = crearSincronizador(
+          cola,
+          _ClienteHttpDePrueba(backend),
+        );
+        final cantidades = <int>[];
+        final suscripcion = sincronizador.sincronizacionesExitosas.listen(
+          cantidades.add,
+        );
+        addTearDown(suscripcion.cancel);
+
+        final error = await sincronizador.sincronizarAhora();
+
+        expect(error, isNull);
+        expect(backend.lotesRecibidos, hasLength(1));
+        expect(await cola.listarPendientes(), isEmpty);
+        expect(sincronizador.pendientes, 0);
+        expect(cantidades, [1]);
+      },
+    );
+
+    test(
+      'si el servidor sigue sin responder, REGRESA el error (para volver a avisar) y el registro sigue en la cola',
+      () async {
+        final cola = crearCola();
+        await cola.agregar(registroDePrueba(id: 'id-1'));
+        final sincronizador = crearSincronizador(
+          cola,
+          _ClienteQueLanzaExcepcionDeRed(),
+        );
+        final cantidades = <int>[];
+        final suscripcion = sincronizador.sincronizacionesExitosas.listen(
+          cantidades.add,
+        );
+        addTearDown(suscripcion.cancel);
+
+        final error = await sincronizador.sincronizarAhora();
+
+        expect(error, isNotNull);
+        expect(error!.code, 'SIN_CONEXION');
+        expect(error.esBackendNoDisponible, isTrue);
+        expect(
+          await cola.listarPendientes(),
+          hasLength(1),
+          reason: 'RF-33: nunca se descarta un registro sin confirmar su envío',
+        );
+        expect(sincronizador.pendientes, 1);
+        expect(cantidades, isEmpty);
+      },
+    );
+
+    test(
+      'ESPERA a que termine un envío ya en vuelo en vez de descartarse — y no duplica el POST',
+      () async {
+        final cola = crearCola();
+        await cola.agregar(registroDePrueba(id: 'id-1'));
+        final cliente = _ClienteConControlManual();
+        final sincronizador = crearSincronizador(cola, cliente);
+
+        // El envío que lanzó, por ejemplo, encolar() un instante antes.
+        final enVuelo = sincronizador.intentarSincronizar();
+        await Future.delayed(const Duration(milliseconds: 30));
+        expect(cliente.vecesLlamado, 1);
+
+        var termino = false;
+        final manual = sincronizador.sincronizarAhora().then((error) {
+          termino = true;
+          return error;
+        });
+        await Future.delayed(const Duration(milliseconds: 30));
+        expect(
+          termino,
+          isFalse,
+          reason: 'debe esperar al envío en vuelo, no regresar un resultado a ciegas',
+        );
+        expect(cliente.vecesLlamado, 1, reason: 'sin un segundo POST en paralelo');
+
+        cliente.resolverSiguiente();
+        final error = await manual;
+        await enVuelo;
+
+        expect(error, isNull);
+        expect(
+          cliente.vecesLlamado,
+          1,
+          reason: 'el envío en vuelo ya vació la cola — no queda nada que mandar',
+        );
+        expect(await cola.listarPendientes(), isEmpty);
+      },
+    );
+  });
 }

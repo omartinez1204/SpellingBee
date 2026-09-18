@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
@@ -6,6 +8,7 @@ import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
 import '../core/nivel.dart';
 import '../core/palabra_admin.dart';
+import '../widgets/error_backend_banner.dart';
 
 /// RF-39 (T-027): panel de profesor para administrar el catálogo completo
 /// (completas/incompletas, ocultas/visibles) — agregar, editar, subir/
@@ -64,7 +67,34 @@ class _AdminCatalogoScreenState extends State<AdminCatalogoScreen> {
     if (controller == null) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
-      controller.cargarMas();
+      unawaited(_cargarMas(controller));
+    }
+  }
+
+  // RF-38 (T-065): AdminCatalogoController.cargarMas() deliberadamente NO
+  // atrapa sus propios errores (ver el comentario ahí) para que sea esta
+  // pantalla quien decida cómo mostrarlos sin destruir la lista ya
+  // cargada — pero antes de T-065 _alLlegarAlFinal() nunca hacía esa parte:
+  // llamaba a cargarMas() sin esperarlo ni atraparlo, así que una carga
+  // incremental fallida quedaba en silencio total (sin mensaje, sin forma
+  // de reintentar). Separado en su propio método porque el listener del
+  // ScrollController debe seguir siendo síncrono.
+  Future<void> _cargarMas(AdminCatalogoController controller) async {
+    try {
+      await controller.cargarMas();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(
+          context,
+          e,
+          onReintentar: () => _cargarMas(controller),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -172,6 +202,23 @@ class _AdminCatalogoScreenState extends State<AdminCatalogoScreen> {
     );
     if (resultado == null || !context.mounted) return;
 
+    await _guardarPalabra(context, controller, resultado, existente: existente);
+  }
+
+  // RF-38 (T-065): separado de _abrirFormulario() para poder reintentar sin
+  // volver a mostrar el diálogo — el diálogo YA se cerró antes de que esto
+  // se llame (Navigator.pop() ocurre dentro de _DialogoPalabra al presionar
+  // "Guardar", ver más abajo), así que lo único que "recuerda" lo que la
+  // persona escribió es [resultado], ya capturado en memoria. Si la
+  // llamada falla por backend no disponible, "Reintentar" vuelve a mandar
+  // ESE MISMO [resultado] — no hace falta reabrir el diálogo ni pedirle a
+  // nadie que vuelva a escribir el texto/significado/oración.
+  Future<void> _guardarPalabra(
+    BuildContext context,
+    AdminCatalogoController controller,
+    _DatosFormulario resultado, {
+    PalabraAdmin? existente,
+  }) async {
     try {
       if (existente == null) {
         await controller.crear(
@@ -195,6 +242,19 @@ class _AdminCatalogoScreenState extends State<AdminCatalogoScreen> {
       }
     } on ApiException catch (e) {
       if (!context.mounted) return;
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(
+          context,
+          e,
+          onReintentar: () => _guardarPalabra(
+            context,
+            controller,
+            resultado,
+            existente: existente,
+          ),
+        );
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
@@ -210,6 +270,14 @@ class _AdminCatalogoScreenState extends State<AdminCatalogoScreen> {
       await controller.alternarOculta(palabra);
     } on ApiException catch (e) {
       if (!context.mounted) return;
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(
+          context,
+          e,
+          onReintentar: () => _alternarOculta(context, controller, palabra),
+        );
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));
@@ -231,11 +299,31 @@ class _AdminCatalogoScreenState extends State<AdminCatalogoScreen> {
     if (bytes == null) return;
     if (!context.mounted) return;
 
+    await _enviarAudio(
+      context,
+      controller,
+      palabra,
+      bytes: bytes,
+      nombreArchivo: resultado.files.single.name,
+    );
+  }
+
+  // RF-38 (T-065): separado de _subirAudio() para poder reintentar sin
+  // volver a abrir el selector de archivos — [bytes] ya está en memoria
+  // (FilePicker.pickFiles(withData: true) los leyó de una vez), así que
+  // "Reintentar" solo vuelve a mandar esos mismos bytes.
+  Future<void> _enviarAudio(
+    BuildContext context,
+    AdminCatalogoController controller,
+    PalabraAdmin palabra, {
+    required List<int> bytes,
+    required String nombreArchivo,
+  }) async {
     try {
       await controller.subirAudio(
         id: palabra.id,
         bytes: bytes,
-        nombreArchivo: resultado.files.single.name,
+        nombreArchivo: nombreArchivo,
       );
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -243,6 +331,20 @@ class _AdminCatalogoScreenState extends State<AdminCatalogoScreen> {
       ).showSnackBar(const SnackBar(content: Text('Audio actualizado.')));
     } on ApiException catch (e) {
       if (!context.mounted) return;
+      if (e.esBackendNoDisponible) {
+        mostrarErrorBackend(
+          context,
+          e,
+          onReintentar: () => _enviarAudio(
+            context,
+            controller,
+            palabra,
+            bytes: bytes,
+            nombreArchivo: nombreArchivo,
+          ),
+        );
+        return;
+      }
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(e.message)));

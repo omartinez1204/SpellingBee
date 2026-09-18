@@ -52,7 +52,9 @@ class _PerfilProgresoScreenState extends State<PerfilProgresoScreen> {
   late final NivelesService _nivelesService;
   late final InsigniasService _insigniasService;
   late final SincronizadorPractica _sincronizador;
-  late final Future<(List<Nivel>, List<Insignia>)> _futuroProgreso;
+  // RF-38 (T-065): no "late final" — _recargar() la reasigna para que el
+  // botón "Reintentar" de abajo pueda volver a intentar la misma carga.
+  late Future<(List<Nivel>, List<Insignia>)> _futuroProgreso;
 
   @override
   void initState() {
@@ -63,6 +65,18 @@ class _PerfilProgresoScreenState extends State<PerfilProgresoScreen> {
         widget.sincronizador ??
         SincronizadorPractica(cola: ColaPracticaArchivo(), token: widget.token);
     _futuroProgreso = _cargarProgreso();
+  }
+
+  void _recargar() {
+    // Cuerpo de bloque, NO "=> ...": una expresión de asignación evalúa al
+    // valor asignado — aquí, el Future que regresa _cargarProgreso() — así
+    // que una arrow function haría que este closure DEVOLVIERA ese Future,
+    // y setState() rechaza en tiempo de ejecución cualquier callback que
+    // regrese un Future (para atrapar justo este error: "¿esto es async por
+    // accidente?").
+    setState(() {
+      _futuroProgreso = _cargarProgreso();
+    });
   }
 
   Future<(List<Nivel>, List<Insignia>)> _cargarProgreso() async {
@@ -90,10 +104,24 @@ class _PerfilProgresoScreenState extends State<PerfilProgresoScreen> {
               final mensaje = error is ApiException
                   ? error.message
                   : 'No se pudo cargar tu progreso. Intenta de nuevo.';
+              // RF-38 (T-065): antes esta pantalla no ofrecía ninguna forma
+              // de reintentar la carga — la única opción era salir y volver
+              // a entrar. Mismo patrón que NivelesScreen/AdminCatalogoScreen/
+              // SeguimientoAlumnosScreen: mensaje + botón "Reintentar".
               return Center(
                 child: Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text(mensaje, textAlign: TextAlign.center),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(mensaje, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: _recargar,
+                        child: const Text('Reintentar'),
+                      ),
+                    ],
+                  ),
                 ),
               );
             }
