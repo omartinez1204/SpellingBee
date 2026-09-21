@@ -84,7 +84,16 @@ class AdminCatalogoController extends ChangeNotifier {
         pagina: _pagina + 1,
         limite: _limitePorPagina,
       );
-      _palabras = [..._palabras, ...lista.palabras];
+      // T-070 (RNF-12): crear() muestra la palabra nueva AL INICIO, pero el
+      // backend ordena por id ascendente y la entrega en la ÚLTIMA página —
+      // sin este filtro, al llegar a esa página aparecería dos veces. Se
+      // conserva la copia que ya está arriba (la que el profesor vio nacer).
+      final yaCargadas = {for (final p in _palabras) p.id};
+      _palabras = [
+        ..._palabras,
+        for (final p in lista.palabras)
+          if (!yaCargadas.contains(p.id)) p,
+      ];
       _pagina = lista.pagina;
       _totalPaginas = lista.totalPaginas;
     } finally {

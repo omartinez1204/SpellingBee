@@ -43,9 +43,20 @@ class NivelesScreen extends StatefulWidget {
   State<NivelesScreen> createState() => _NivelesScreenState();
 }
 
+/// T-070 (RNF-12): cuántas palabras de un nivel descargado se pintan de una
+/// vez. El paquete ya está en el dispositivo (no hay red de por medio), pero
+/// un nivel puede crecer más allá de 50 palabras y construir todos sus
+/// ListTile a la vez es justo lo que RNF-12 pide evitar: se pintan por lotes
+/// y "Mostrar más" agrega el siguiente.
+const _palabrasPorLote = 50;
+
 class _NivelesScreenState extends State<NivelesScreen> {
   late final NivelesController _controller;
   late final SincronizadorPractica _sincronizador;
+
+  /// Palabras visibles por nivel. Vive aquí (no en la tarjeta) para que
+  /// sobreviva a que la tarjeta salga de pantalla al hacer scroll.
+  final Map<int, int> _palabrasVisibles = {};
 
   @override
   void initState() {
@@ -108,6 +119,7 @@ class _NivelesScreenState extends State<NivelesScreen> {
       itemCount: _controller.niveles.length,
       itemBuilder: (context, index) {
         final nivel = _controller.niveles[index];
+        final visibles = _palabrasVisibles[nivel.id] ?? _palabrasPorLote;
         return _TarjetaNivel(
           idNivel: nivel.id,
           nombre: nivel.nombre,
@@ -115,8 +127,12 @@ class _NivelesScreenState extends State<NivelesScreen> {
           descargando: _controller.estaDescargando(nivel.id),
           error: _controller.errorDescarga(nivel.id),
           paquete: _controller.paqueteLocal(nivel.id),
+          palabrasVisibles: visibles,
           onDescargar: () => _controller.descargar(nivel.id),
           onAbrirPalabra: _abrirPractica,
+          onMostrarMas: () => setState(
+            () => _palabrasVisibles[nivel.id] = visibles + _palabrasPorLote,
+          ),
         );
       },
     );
@@ -144,8 +160,10 @@ class _TarjetaNivel extends StatelessWidget {
     required this.descargando,
     required this.error,
     required this.paquete,
+    required this.palabrasVisibles,
     required this.onDescargar,
     required this.onAbrirPalabra,
+    required this.onMostrarMas,
   });
 
   final int idNivel;
@@ -154,8 +172,15 @@ class _TarjetaNivel extends StatelessWidget {
   final bool descargando;
   final String? error;
   final PaqueteNivel? paquete;
+  final int palabrasVisibles;
   final VoidCallback onDescargar;
   final ValueChanged<DetallePalabra> onAbrirPalabra;
+  final VoidCallback onMostrarMas;
+
+  String _textoMostrarMas(int totalPalabras) {
+    final restantes = totalPalabras - palabrasVisibles;
+    return 'Mostrar más ($restantes ${restantes == 1 ? 'restante' : 'restantes'})';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -216,15 +241,24 @@ class _TarjetaNivel extends StatelessWidget {
                 const Text(
                   'Este nivel todavía no tiene palabras disponibles para descargar.',
                 )
-              else
-                ...paquete!.palabras.map(
-                  (palabra) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(palabra.texto),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => onAbrirPalabra(palabra),
+              else ...[
+                ...paquete!.palabras
+                    .take(palabrasVisibles)
+                    .map(
+                      (palabra) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(palabra.texto),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => onAbrirPalabra(palabra),
+                      ),
+                    ),
+                if (paquete!.palabras.length > palabrasVisibles)
+                  TextButton(
+                    key: Key('mostrar-mas-palabras-$idNivel'),
+                    onPressed: onMostrarMas,
+                    child: Text(_textoMostrarMas(paquete!.palabras.length)),
                   ),
-                ),
+              ],
             ],
           ],
         ),

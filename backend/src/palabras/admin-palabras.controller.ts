@@ -9,6 +9,7 @@ import {
   Post,
   Query,
   UploadedFile,
+  UseFilters,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -17,6 +18,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/guards/jwt-auth.guard.js';
 import { PaginacionDto } from '../common/dto/paginacion.dto.js';
 import { AdminPalabrasService } from './admin-palabras.service.js';
+import { ArchivoDemasiadoGrandeFilter } from './archivo-demasiado-grande.filter.js';
 import { CrearPalabraDto } from './dto/crear-palabra.dto.js';
 import { EditarPalabraDto } from './dto/editar-palabra.dto.js';
 import { OcultarPalabraDto } from './dto/ocultar-palabra.dto.js';
@@ -60,6 +62,9 @@ export class AdminPalabrasController {
 
   // RF-11. Campo del multipart: "audio".
   @Post(':id/audio')
+  // T-071: el límite crudo de multer responde con el mismo error de negocio
+  // de 1 MB (en español), no con "File too large".
+  @UseFilters(ArchivoDemasiadoGrandeFilter)
   @UseInterceptors(
     FileInterceptor('audio', {
       storage: memoryStorage(),

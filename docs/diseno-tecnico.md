@@ -124,7 +124,7 @@ Prefijo sugerido: `/api/v1`. Formato de error uniforme para todos los endpoints 
 | Método y ruta | RF | Descripción |
 |---|---|---|
 | `GET /niveles` | RF-05 | Lista los 3 niveles. |
-| `GET /niveles/:id/palabras` | RF-06 | Solo palabras `completa=true AND oculta=false` de ese nivel. |
+| `GET /niveles/:id/palabras` | RF-06 | Solo palabras `completa=true AND oculta=false` de ese nivel. Paginado (RNF-12, T-070): responde `{ palabras: [{ id, texto }], total, pagina, limite, total_paginas }`, ordenado por `id`. |
 | `GET /palabras/:id` | RF-07 | Detalle completo (palabra, significado, oración, url de audio). **El ocultamiento de significado/oración tras las pistas es responsabilidad del cliente Flutter**, no del backend: el backend siempre regresa los 4 campos; la UI decide qué mostrar de entrada y qué revelar con los botones "Ver significado"/"Ver ejemplo". |
 
 ### 3.3 Catálogo — administración docente (RF-08 a RF-11, RF-39)
@@ -163,17 +163,18 @@ Todas requieren rol `profesor`.
 
 | Método y ruta | RF | Descripción |
 |---|---|---|
-| `GET /niveles/:id/descarga` | RF-31 | Paquete completo del nivel: todas las palabras completas y no ocultas + URLs de audio, pensado para que el cliente descargue también los binarios de audio y los cachee localmente. |
+| `GET /niveles/:id/descarga` | RF-31 | Paquete completo del nivel: todas las palabras completas y no ocultas + URLs de audio, pensado para que el cliente descargue también los binarios de audio y los cachee localmente. **Sin paginar a propósito** (excepción a RNF-12 auditada en T-070 [decisión de equipo, a confirmar]): la consulta está acotada a un solo nivel y el paquete se descarga de una sola vez para poder practicar sin conexión. |
 | `POST /practica/sync` | RF-33 | Body: arreglo de registros de práctica generados offline (mismo shape que `POST /practica`, en lote). Debe ser idempotente (un registro reenviado por reintento no debe duplicarse — usar un id generado en el cliente, ej. UUID, como llave de deduplicación). |
 
 El manejo de "backend no disponible" (RF-38) es responsabilidad del cliente Flutter: reintentar la llamada y no perder el formulario capturado; no requiere un endpoint especial.
 
 ## 4. No funcionales relevantes al diseño
 
+- **RNF-01** (interfaz en español; en inglés solo la palabra practicada y su oración de ejemplo): implementado en dos capas (T-071). En Flutter, `MaterialApp` fija `locale: es` con `flutter_localizations` (`lib/core/localizacion.dart`); sin eso, los textos que pone el propio Flutter (tooltip «Atrás», barra Cortar/Copiar/Pegar, barreras de menús) salen en inglés aunque el teléfono esté en español, porque no salen de ningún literal del código. En el backend, el `message` de cada error llega tal cual a la pantalla de la app: los propios (`DominioException` y el `message` de cada decorador de los DTO) van en español, y el filtro global (`HttpExceptionFilter`) traduce los que generan Nest, class-validator, multer y body-parser (`common/filters/mensajes-en-espanol.ts`; la subida de audio de más de 5 MB responde con el mismo error de 1 MB de RF-11). El cliente cierra el mismo hueco del otro lado: si el cuerpo de un error no cumple `{ error: { code, message } }` (lo que mandaría un gateway, o la forma por defecto de Nest, con `error` como cadena), `ApiClient` no muestra su texto —vendría en inglés— sino «Ocurrió un error inesperado.» (antes lanzaba un `TypeError` sin capturar y la pantalla se quedaba muda). Fuera del control de la app y por eso fuera del criterio: lo que dibuja Android por su cuenta (diálogo del permiso de micrófono, selector de archivos), que sigue el idioma del dispositivo. El nombre del producto, «Spelling Bee», se conserva porque es nombre propio (así lo define el ERS §1) **[decisión de equipo, a confirmar]**. Guardias automáticas: `app/test/localizacion_es_test.dart` (idioma del framework, barrido de pantallas y de los literales de `lib/`), `backend/src/common/dto/mensajes-validacion.spec.ts` (todo validador de un DTO trae mensaje propio) y `backend/test/mensajes-espanol.e2e-spec.ts`.
 - **RNF-03** (audio < 2s si ya está descargado/cacheado): el cliente Flutter debe cachear el audio descargado (RF-31) en almacenamiento local, no volver a pedirlo a cada reproducción.
 - **RNF-07 / RNF-08** (seguridad): todo endpoint bajo `/admin/*` valida rol `profesor` vía guard de NestJS; todo endpoint que devuelve datos de un alumno específico valida que el `id_alumno` solicitado sea el del JWT (o que el rol sea profesor).
 - **RNF-09** (200 MB de audios): validado en `POST /admin/palabras/:id/audio` (1 MB por archivo ya lo acota estructuralmente; monitoreo del total queda fuera del alcance del backend en esta versión).
-- **RNF-12** (paginación >50 elementos): aplica a `GET /admin/palabras` y `GET /admin/alumnos(/:id)`. Sugerido: `?pagina=1&porPagina=50`.
+- **RNF-12** (paginación >50 elementos): implementado con `?pagina=1&limite=20` (`limite` por defecto 20, tope 50: uno mayor responde 400; DTO compartido `PaginacionDto`) en `GET /admin/palabras`, `GET /admin/alumnos`, `GET /admin/alumnos/:id` y `GET /niveles/:id/palabras` (T-070). La respuesta lleva `{ <lista>, total, pagina, limite, total_paginas }` y el orden es estable (por `id`; en el detalle de alumno, `fecha_hora` desc con `id` desc como desempate). Excepción deliberada: `GET /niveles/:id/descarga` (§3.6). En Flutter, el catálogo docente, la lista de alumnos y el detalle de un alumno cargan con scroll infinito por lotes de 20, y la lista de palabras de un nivel ya descargado se pinta por lotes de 50 con «Mostrar más».
 - **RNF-13** (respaldo SQLite): fuera del alcance del código de la app — es una tarea operativa (cron de respaldo del archivo `.sqlite`) a definir con TI de NovaUniversitas, según el ERS §8.2.
 
 ## 5. Puntos que siguen abiertos (heredados del ERS, no de este documento)

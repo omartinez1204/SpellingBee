@@ -1,5 +1,5 @@
 name: spelling_bee
-description: "A new Flutter project."
+description: "Spelling Bee: app móvil de NovaUniversitas para practicar pronunciación, deletreo y oraciones en inglés."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -29,6 +29,11 @@ environment:
 # versions available, run `flutter pub outdated`.
 dependencies:
   flutter:
+    sdk: flutter
+  # T-071 (RNF-01): textos propios de Flutter (tooltip "Atrás", barra de
+  # Cortar/Copiar/Pegar, etiqueta de las barreras de menús...) en español.
+  # Viene con el SDK de Flutter: no hay versión que pinear.
+  flutter_localizations:
     sdk: flutter
 
   # The following adds the Cupertino Icons font to your application.

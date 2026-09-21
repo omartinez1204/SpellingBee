@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/cola_practica.dart';
 import 'package:spelling_bee/core/grabador_audio.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/core/monitor_conectividad.dart';
 import 'package:spelling_bee/core/palabras_service.dart';
 import 'package:spelling_bee/core/practica_service.dart';
@@ -14,6 +15,8 @@ import 'package:spelling_bee/core/registro_practica_pendiente.dart';
 import 'package:spelling_bee/core/reproductor_audio.dart';
 import 'package:spelling_bee/core/sincronizador_practica.dart';
 import 'package:spelling_bee/screens/practica_palabra_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 // Sin librería de mocking: un http.Client falso que regresa una respuesta
 // fija, igual de simple que el _AlmacenDePruebaEnMemoria de
@@ -301,8 +304,15 @@ class _RelojFalso {
   void avanzar(Duration d) => _actual = _actual.add(d);
 }
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 // La pantalla completa (palabra + audio + pistas + deletreo + cronómetro) no
 // cabe en los 600px de alto del viewport por defecto de las pruebas —
@@ -348,6 +358,12 @@ void main() {
       expect(find.widgetWithText(OutlinedButton, 'Ver ejemplo'), findsOneWidget);
       expect(find.text('negocio'), findsNothing);
       expect(find.text('This is a business.'), findsNothing);
+      // T-071 (RNF-01): lo único en inglés es la palabra a practicar.
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business'],
+        pantalla: 'práctica de palabra (inicial)',
+      );
     },
   );
 
@@ -377,6 +393,11 @@ void main() {
     // La otra pista sigue sin revelarse.
     expect(find.text('This is a business.'), findsNothing);
     expect(find.widgetWithText(OutlinedButton, 'Ver ejemplo'), findsOneWidget);
+    await expectSoloEspanol(
+      tester,
+      contenidoIngles: ['business'],
+      pantalla: 'práctica de palabra (significado revelado)',
+    );
   });
 
   testWidgets('al presionar "Ver ejemplo" revela la oración, no antes', (
@@ -402,6 +423,11 @@ void main() {
 
     expect(find.text('This is a business.'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Ver ejemplo'), findsNothing);
+    await expectSoloEspanol(
+      tester,
+      contenidoIngles: ['business', 'This is a business.'],
+      pantalla: 'práctica de palabra (ejemplo revelado)',
+    );
   });
 
   testWidgets(
@@ -441,6 +467,11 @@ void main() {
         find.text('Esta palabra todavía no tiene oración de ejemplo capturada.'),
         findsOneWidget,
       );
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business'],
+        pantalla: 'práctica de palabra incompleta',
+      );
     },
   );
 
@@ -468,6 +499,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('No existe una palabra con ese id.'), findsOneWidget);
+    await expectSoloEspanol(tester, pantalla: 'práctica de palabra inexistente');
   });
 
   group('reproducción de audio (T-030)', () {
@@ -674,6 +706,52 @@ void main() {
         expect(reproductor.vecesAdelantado, 1);
         expect(find.byIcon(Icons.play_arrow), findsOneWidget);
         expect(reproductor.vecesReanudado, 0);
+      },
+    );
+
+    testWidgets(
+      'T-071 (RNF-01): con el audio reproduciéndose y en pausa, los tooltips de los controles están en español y no hay inglés fuera de la palabra',
+      (tester) async {
+        final cliente = _ClienteHttpDePrueba(_palabraConAudio);
+        final servicio = PalabrasService(apiClient: ApiClient(httpClient: cliente));
+        final reproductor = _ReproductorFalso();
+
+        await tester.pumpWidget(
+          _envolver(
+            PracticaPalabraScreen(
+              idPalabra: 1,
+              token: 'token-de-prueba',
+              palabrasService: servicio,
+              reproductor: reproductor,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Reproducir pronunciación'), findsOneWidget);
+
+        // Reproduciendo: pausar, retroceder, adelantar y detener.
+        await tester.tap(find.byIcon(Icons.volume_up));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Pausar'), findsOneWidget);
+        expect(find.byTooltip('Retroceder 5 segundos'), findsOneWidget);
+        expect(find.byTooltip('Adelantar 5 segundos'), findsOneWidget);
+        expect(find.byTooltip('Detener'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'práctica de palabra (audio reproduciéndose)',
+        );
+
+        // En pausa: el principal pasa a "Reanudar".
+        await tester.tap(find.byIcon(Icons.pause));
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Reanudar'), findsOneWidget);
+        expect(find.byTooltip('Pausar'), findsNothing);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'práctica de palabra (audio en pausa)',
+        );
       },
     );
 
@@ -1231,6 +1309,11 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.textContaining('primer intento'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'práctica de palabra (primer intento terminado)',
+        );
       },
     );
 
@@ -1276,6 +1359,11 @@ void main() {
 
         expect(find.textContaining('Mejoraste'), findsOneWidget);
         expect(find.textContaining('00:10'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'práctica de palabra (mejoró su marca)',
+        );
       },
     );
 
@@ -1323,6 +1411,11 @@ void main() {
 
         expect(find.text('¡Felicidades!'), findsOneWidget);
         expect(find.textContaining('Fácil'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'diálogo de insignia',
+        );
 
         // El diálogo se puede cerrar y no deja nada pendiente.
         await tester.tap(find.widgetWithText(FilledButton, 'Aceptar'));
@@ -1497,6 +1590,11 @@ void main() {
         await _tocar(tester, find.widgetWithText(FilledButton, 'Verificar orden'));
 
         expect(find.textContaining('¡Correcto!'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'deletreo correcto',
+        );
       },
     );
 
@@ -1528,6 +1626,11 @@ void main() {
 
       expect(find.textContaining('Todavía no es el orden correcto'), findsOneWidget);
       expect(find.textContaining('¡Correcto!'), findsNothing);
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business'],
+        pantalla: 'deletreo incorrecto',
+      );
 
       // "Sin bloquear el avance": el resto de la pantalla (el cronómetro)
       // sigue funcionando con normalidad después de un intento fallido.
@@ -1706,6 +1809,11 @@ void main() {
       await abrirPantalla(tester);
 
       expect(find.byType(TextField), findsOneWidget);
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business'],
+        pantalla: 'campo de oración (vacío)',
+      );
     });
 
     testWidgets('RF-26: con el campo vacío no muestra ningún aviso', (tester) async {
@@ -1724,6 +1832,13 @@ void main() {
 
         expect(find.textContaining('Todavía no incluye'), findsOneWidget);
         expect(find.textContaining('"business"'), findsOneWidget);
+        // T-071 (RNF-01): la oración que escribe el alumno y la palabra son
+        // contenido léxico (inglés permitido); el aviso alrededor, no.
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business', 'This is a nice sentence.'],
+          pantalla: 'campo de oración con aviso',
+        );
 
         // "Sin bloquear nada": el resto de la pantalla (cronómetro) sigue
         // funcionando con normalidad mientras el aviso está visible.
@@ -2187,6 +2302,11 @@ void main() {
           findsOneWidget,
         );
         expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsNWidgets(2));
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'Escúchate con permiso de micrófono negado',
+        );
       },
     );
 
@@ -2218,6 +2338,11 @@ void main() {
         expect(find.widgetWithText(OutlinedButton, 'Detener'), findsOneWidget);
         // La sección de oración (no tocada) sigue en reposo.
         expect(find.widgetWithText(OutlinedButton, 'Escúchate'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business'],
+          pantalla: 'Escúchate grabando',
+        );
       },
     );
 
@@ -2511,6 +2636,13 @@ void main() {
         expect(e.cola.registros.single.oracionAlumno, 'I run my own business.');
         expect(e.cola.registros.single.deletreoCorrecto, isTrue);
         expect(e.cola.registros.single.tiempoSegundos, 3);
+        // T-071 (RNF-01): el banner de "servidor no responde" y todo lo demás,
+        // en español; en inglés solo la palabra y la oración que escribió.
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business', 'I run my own business.'],
+          pantalla: 'práctica con el servidor caído (banner de reintentar)',
+        );
       },
     );
 
@@ -2528,6 +2660,11 @@ void main() {
         );
         expect(find.textContaining('El servidor no responde'), findsNothing);
         expect(find.widgetWithText(TextButton, 'Reintentar'), findsOneWidget);
+        await expectSoloEspanol(
+          tester,
+          contenidoIngles: ['business', 'I run my own business.'],
+          pantalla: 'práctica sin conexión (banner de reintentar)',
+        );
       },
     );
 

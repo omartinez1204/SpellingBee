@@ -5,7 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/auth_controller.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/screens/registro_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 /// RF-38 (T-065): representa el patrón aplicado por igual a los 5
 /// formularios de autenticación (login, registro, cambiar/recuperar/
@@ -33,8 +36,15 @@ class _ClienteQueFallaLuegoOk extends http.BaseClient {
   }
 }
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 Future<void> _llenarFormulario(WidgetTester tester) async {
   await tester.enterText(
@@ -125,6 +135,11 @@ void main() {
         ),
       );
       expect(campoContrasena.controller!.text, 'ClaveSegura123');
+      // T-071 (RNF-01): el formulario lleno y el banner de error, en español.
+      await expectSoloEspanol(
+        tester,
+        pantalla: 'registro con el servidor caído (banner de reintentar)',
+      );
 
       final botonReintentar = find.widgetWithText(TextButton, 'Reintentar');
       await tester.ensureVisible(botonReintentar);

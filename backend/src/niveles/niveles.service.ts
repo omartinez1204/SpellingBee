@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
+import { PaginacionDto } from '../common/dto/paginacion.dto.js';
 import { DominioException } from '../common/exceptions/dominio.exception.js';
 import { parsearIdDeRuta } from '../common/parsear-id-de-ruta.util.js';
 import { urlAudio } from '../palabras/palabras.service.js';
@@ -39,7 +40,13 @@ export class NivelesService {
   // las 45 palabras del catálogo (sin significado/oración/audio capturados
   // aún, T-003 bloqueado) puede aparecer aquí todavía. Una lista vacía en
   // este momento es el resultado correcto, no un error.
-  async listarPalabras(idNivelParam: string) {
+  //
+  // Paginado (RNF-12, T-070), mismo patrón que T-024/T-050/T-051: un nivel
+  // puede acumular más de 50 palabras listas para practicar, y esta ruta es
+  // pública — nunca debe traerlas todas en una sola consulta. Orden estable
+  // por id ascendente (único), igual que GET /admin/palabras y la descarga
+  // RF-31, para que ninguna palabra se repita ni se omita entre páginas.
+  async listarPalabras(idNivelParam: string, query: PaginacionDto) {
     const idNivel = parsearIdDeRuta(idNivelParam);
     if (idNivel === null) {
       throw errorNivelIdInvalido();
@@ -52,16 +59,32 @@ export class NivelesService {
       throw errorNivelNoEncontrado();
     }
 
+    const { pagina, limite } = query;
+    const where = { idNivel, completa: true, oculta: false };
     // Campos mínimos [decisión de equipo, a confirmar]: ni diseno-tecnico.md
     // ni el ERS fijan la forma de esta lista. significado_es/oracion_ejemplo
     // se excluyen a propósito (RF-07: quedan ocultos tras pistas, el detalle
     // completo es GET /palabras/:id de T-023). nombre_archivo_audio también
     // se deja fuera de esta lista por ahora, ya que RF-07 lo asocia a la
     // pantalla de práctica de UNA palabra ya elegida, no a este listado.
-    return this.prisma.palabra.findMany({
-      where: { idNivel, completa: true, oculta: false },
-      select: { id: true, texto: true },
-    });
+    const [total, palabras] = await Promise.all([
+      this.prisma.palabra.count({ where }),
+      this.prisma.palabra.findMany({
+        where,
+        orderBy: { id: 'asc' },
+        skip: (pagina - 1) * limite,
+        take: limite,
+        select: { id: true, texto: true },
+      }),
+    ]);
+
+    return {
+      palabras,
+      total,
+      pagina,
+      limite,
+      total_paginas: Math.max(1, Math.ceil(total / limite)),
+    };
   }
 
   // RF-31 (T-060): paquete completo de un nivel para práctica sin conexión.
@@ -85,6 +108,11 @@ export class NivelesService {
   // (diseno-tecnico.md §3.6) — partirlo en páginas iría en contra del
   // propósito del endpoint. El catálogo actual (45 palabras/3 niveles) queda
   // muy por debajo del umbral de RNF-12 de cualquier forma.
+  //
+  // T-070 (auditoría de RNF-12): se mantiene como EXCEPCIÓN deliberada, no
+  // como omisión. La consulta ya está acotada a UN nivel (nunca toda la
+  // tabla) y con 120 palabras completas medió ~15 KB; GET /niveles/:id/
+  // palabras, que sí es un listado navegable, se paginó en esa misma tarea.
   async descargarNivel(idNivelParam: string) {
     const idNivel = parsearIdDeRuta(idNivelParam);
     if (idNivel === null) {

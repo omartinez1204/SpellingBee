@@ -6,8 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/insignias_service.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/core/niveles_service.dart';
 import 'package:spelling_bee/screens/perfil_progreso_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 // T-047 (RF-24). Igual que _ClienteHttpDePrueba en
 // practica_palabra_screen_test.dart: un http.Client falso que distingue por
@@ -76,8 +79,15 @@ const _tresNiveles = [
   {'id': 3, 'nombre': 'Difícil', 'orden': 3},
 ];
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 void main() {
   group('PerfilProgresoScreen (RF-24, T-047)', () {
@@ -150,6 +160,8 @@ void main() {
           find.text('Todavía no completas este nivel al 100%'),
           findsNWidgets(2),
         );
+        // T-071 (RNF-01): ningún texto visible ni anunciado en inglés.
+        await expectSoloEspanol(tester, pantalla: 'Mi progreso');
       },
     );
 

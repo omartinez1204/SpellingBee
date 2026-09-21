@@ -7,12 +7,15 @@ import 'package:spelling_bee/core/almacen_paquetes.dart';
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/cache_audio.dart';
 import 'package:spelling_bee/core/detalle_palabra.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/core/nivel.dart';
 import 'package:spelling_bee/core/niveles_controller.dart';
 import 'package:spelling_bee/core/niveles_service.dart';
 import 'package:spelling_bee/core/paquete_nivel.dart';
 import 'package:spelling_bee/screens/niveles_screen.dart';
 import 'package:spelling_bee/screens/practica_palabra_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 // T-061 (RF-31/RF-32): estas pruebas cubren SOLO lo que se ve y se toca en
 // pantalla, con dobles 100% en memoria (AlmacenPaquetes y CacheAudio
@@ -109,8 +112,15 @@ class _CacheAudioDePrueba implements CacheAudio {
   }
 }
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 NivelesController _controlador({
   required http.Client cliente,
@@ -149,6 +159,8 @@ void main() {
         ),
         findsNWidgets(2),
       );
+      // T-071 (RNF-01): ningún texto visible ni anunciado en inglés.
+      await expectSoloEspanol(tester, pantalla: 'Practicar (niveles sin descargar)');
     },
   );
 
@@ -198,6 +210,12 @@ void main() {
       expect(cacheAudio.urlsPedidas, [
         'http://10.0.2.2:3000/assets/audios/10.mp3',
       ]);
+      // T-071 (RNF-01): lo único en inglés son las palabras a practicar.
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business', 'sinaudio'],
+        pantalla: 'Practicar (nivel descargado)',
+      );
     },
   );
 
@@ -378,6 +396,114 @@ void main() {
       expect(find.text('Fácil'), findsOneWidget);
     },
   );
+
+  group('RNF-12 (T-070): un nivel con más de 50 palabras no se pinta completo de una vez', () {
+    List<Map<String, dynamic>> palabras(int n) => [
+      for (var i = 1; i <= n; i++)
+        {
+          'id': 1000 + i,
+          'texto': 'palabra-${i.toString().padLeft(3, '0')}',
+          'significado_es': null,
+          'oracion_ejemplo': null,
+          'url_audio': null,
+        },
+    ];
+
+    Future<void> descargarFacil(WidgetTester tester, int cuantas) async {
+      final controller = _controlador(
+        cliente: _ClienteHttpDePrueba(
+          _BackendSimulado(palabrasFacil: palabras(cuantas)),
+        ),
+      );
+      await tester.pumpWidget(
+        _envolver(
+          NivelesScreen(token: 'token-de-prueba', controller: controller),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('descargar-nivel-2')));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> mostrarMas(WidgetTester tester) async {
+      final boton = find.byKey(const Key('mostrar-mas-palabras-2'));
+      await tester.ensureVisible(boton);
+      await tester.pumpAndSettle();
+      await tester.tap(boton);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'con 120 palabras pinta solo 50 y cada "Mostrar más" agrega el siguiente lote hasta completar',
+      (tester) async {
+        await descargarFacil(tester, 120);
+
+        expect(find.byType(ListTile), findsNWidgets(50));
+        expect(find.text('palabra-050'), findsOneWidget);
+        expect(find.text('palabra-051'), findsNothing);
+        expect(find.text('Mostrar más (70 restantes)'), findsOneWidget);
+        await expectSoloEspanol(tester, pantalla: 'Practicar (lote de 50 palabras)');
+
+        await mostrarMas(tester);
+        expect(find.byType(ListTile), findsNWidgets(100));
+        expect(find.text('palabra-100'), findsOneWidget);
+        expect(find.text('palabra-101'), findsNothing);
+        expect(find.text('Mostrar más (20 restantes)'), findsOneWidget);
+
+        await mostrarMas(tester);
+        expect(find.byType(ListTile), findsNWidgets(120));
+        expect(find.text('palabra-120'), findsOneWidget);
+        // Ya no queda nada por mostrar: el botón desaparece.
+        expect(
+          find.byKey(const Key('mostrar-mas-palabras-2')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'con exactamente 50 palabras (el umbral) se ven todas y NO aparece "Mostrar más"',
+      (tester) async {
+        await descargarFacil(tester, 50);
+
+        expect(find.byType(ListTile), findsNWidgets(50));
+        expect(
+          find.byKey(const Key('mostrar-mas-palabras-2')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'con 51 palabras aparece "Mostrar más (1 restante)" y al tocarlo se completa la lista',
+      (tester) async {
+        await descargarFacil(tester, 51);
+
+        expect(find.byType(ListTile), findsNWidgets(50));
+        expect(find.text('Mostrar más (1 restante)'), findsOneWidget);
+
+        await mostrarMas(tester);
+        expect(find.byType(ListTile), findsNWidgets(51));
+        expect(find.text('palabra-051'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'una palabra del segundo lote se puede abrir para practicar igual que las del primero',
+      (tester) async {
+        await descargarFacil(tester, 60);
+        await mostrarMas(tester);
+
+        final palabra = find.text('palabra-055');
+        await tester.ensureVisible(palabra);
+        await tester.pumpAndSettle();
+        await tester.tap(palabra);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(PracticaPalabraScreen), findsOneWidget);
+      },
+    );
+  });
 }
 
 class _ClienteConFalloUnaVez extends http.BaseClient {

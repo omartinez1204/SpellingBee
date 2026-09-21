@@ -10,8 +10,11 @@ import 'package:spelling_bee/core/admin_catalogo_controller.dart';
 import 'package:spelling_bee/core/admin_palabras_service.dart';
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/auth_controller.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/core/niveles_service.dart';
 import 'package:spelling_bee/screens/admin_catalogo_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 // Mismo patrón que auth_controller_test.dart: un storage en memoria para no
 // depender de flutter_secure_storage (no disponible fuera de un dispositivo)
@@ -361,8 +364,15 @@ class _FilePickerDePrueba extends FilePicker {
   }) async => _resultado;
 }
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 void main() {
   testWidgets(
@@ -382,6 +392,8 @@ void main() {
       );
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.byType(FloatingActionButton), findsNothing);
+      // T-071 (RNF-01): ningún texto visible ni anunciado en inglés.
+      await expectSoloEspanol(tester, pantalla: 'catálogo (aviso solo profesores)');
     },
   );
 
@@ -431,6 +443,12 @@ void main() {
       expect(find.text('Incompleta'), findsOneWidget);
       expect(find.text('Visible'), findsOneWidget);
       expect(find.text('Oculta'), findsOneWidget);
+      // T-071 (RNF-01): lo único en inglés son las palabras del catálogo.
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business', 'payment', 'This is a business.'],
+        pantalla: 'catálogo con palabras',
+      );
     },
   );
 
@@ -458,6 +476,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
+      await expectSoloEspanol(tester, pantalla: 'catálogo con error de carga');
 
       await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
       await tester.pumpAndSettle();
@@ -466,6 +485,7 @@ void main() {
         find.text('Todavía no hay palabras en el catálogo.'),
         findsOneWidget,
       );
+      await expectSoloEspanol(tester, pantalla: 'catálogo vacío');
     },
   );
 
@@ -493,6 +513,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Guardar'));
     await tester.pump();
     expect(find.text('El texto es obligatorio.'), findsOneWidget);
+    // T-071 (RNF-01): el diálogo de alta, con su error de validación.
+    await expectSoloEspanol(tester, pantalla: 'diálogo Agregar palabra con error');
 
     await tester.enterText(
       find.widgetWithText(TextFormField, 'Texto (en inglés)'),

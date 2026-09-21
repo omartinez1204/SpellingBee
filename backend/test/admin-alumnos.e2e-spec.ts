@@ -465,6 +465,61 @@ describe('AdminAlumnosController (e2e) - GET /admin/alumnos', () => {
           .set('Authorization', `Bearer ${tokenProfesor}`)
           .expect(400);
       });
+
+      // T-070: con más de 50 registros (55) y 30 de ellos con EXACTAMENTE la
+      // misma fecha_hora — justo a caballo de los límites de página de 20 —
+      // el orden debe ser estable (fecha_hora desc, id desc) para que
+      // recorrer las páginas no repita ni omita ninguno.
+      it('con más de 50 registros y marcas de tiempo empatadas, recorrer las páginas entrega cada uno exactamente una vez y en orden estable', async () => {
+        const idA = await alumnoId(USUARIO_ALUMNO_A);
+        const palabra = await crearPalabra('detalle-empates', idFacil);
+        const instante = new Date('2026-01-15T10:00:00.000Z');
+        await prisma.registroPractica.createMany({
+          data: Array.from({ length: 55 }, (_, i) => ({
+            idAlumno: idA,
+            idPalabra: palabra.id,
+            idNivelEnPractica: idFacil,
+            tiempoSegundos: 10,
+            oracionAlumno: `intento-${String(i).padStart(3, '0')}`,
+            deletreoCorrecto: true,
+            sincronizado: true,
+            // 0..29: mismo instante (empatados, los más recientes);
+            // 30..54: cada uno un minuto más viejo que el anterior.
+            fechaHora:
+              i < 30
+                ? instante
+                : new Date(instante.getTime() - (i - 29) * 60_000),
+          })),
+        });
+
+        const vistos: string[] = [];
+        let totalPaginas = 1;
+        for (let pagina = 1; pagina <= totalPaginas; pagina++) {
+          const respuesta = await request(app.getHttpServer())
+            .get(`/admin/alumnos/${idA}`)
+            .query({ pagina, limite: 20 })
+            .set('Authorization', `Bearer ${tokenProfesor}`)
+            .expect(200);
+          expect(respuesta.body.intentos.length).toBeLessThanOrEqual(20);
+          expect(respuesta.body.total).toBe(55);
+          totalPaginas = respuesta.body.total_paginas;
+          vistos.push(
+            ...respuesta.body.intentos.map(
+              (i: { oracion_alumno: string }) => i.oracion_alumno,
+            ),
+          );
+        }
+
+        expect(totalPaginas).toBe(3);
+        expect(new Set(vistos).size).toBe(55); // sin repetidos
+        // Empatados por id descendente (el último insertado primero), luego
+        // los más viejos de más nuevo a más viejo.
+        const esperado = [
+          ...Array.from({ length: 30 }, (_, k) => 29 - k),
+          ...Array.from({ length: 25 }, (_, k) => 30 + k),
+        ].map((i) => `intento-${String(i).padStart(3, '0')}`);
+        expect(vistos).toEqual(esperado);
+      });
     });
   });
 

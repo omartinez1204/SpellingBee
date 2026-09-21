@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/auth_controller.dart';
+import 'core/localizacion.dart';
 import 'screens/cambiar_password_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
@@ -22,6 +23,11 @@ class SpellingBeeApp extends StatelessWidget {
     return MaterialApp(
       title: 'Spelling Bee',
       debugShowCheckedModeBanner: false,
+      // RNF-01 (T-071): idioma fijo en español, también para los textos que
+      // pone el propio Flutter (ver core/localizacion.dart).
+      locale: localeDeLaInterfaz,
+      supportedLocales: localesSoportados,
+      localizationsDelegates: delegadosDeLocalizacion,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
         useMaterial3: true,

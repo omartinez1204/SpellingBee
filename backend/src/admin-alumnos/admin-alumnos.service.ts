@@ -143,8 +143,12 @@ export class AdminAlumnosService {
             where: whereRegistros,
             // Más reciente primero: para revisar el progreso de un alumno,
             // lo último que hizo es lo más relevante [decisión de equipo —
-            // el ERS no fija el orden].
-            orderBy: { fechaHora: 'desc' },
+            // el ERS no fija el orden]. `id` desc desempata (T-070):
+            // fecha_hora no es única — dos registros pueden coincidir al
+            // milisegundo — y sin un segundo criterio único el motor puede
+            // ordenar los empatados distinto en cada consulta, de modo que
+            // skip/take repetiría u omitiría uno entre páginas.
+            orderBy: [{ fechaHora: 'desc' }, { id: 'desc' }],
             skip: (pagina - 1) * limite,
             take: limite,
             select: {

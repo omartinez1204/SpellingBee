@@ -45,6 +45,11 @@ class DetalleAlumnoController extends ChangeNotifier {
   int _totalPaginas = 1;
   bool get hayMasPaginas => _pagina < _totalPaginas;
 
+  // T-070 (RNF-12): mismo mecanismo que SeguimientoAlumnosController — una
+  // respuesta que llega después de un reinicio de la lista (cargarInicial()
+  // / aplicarFiltros()) pertenece a los filtros viejos y se descarta.
+  int _generacion = 0;
+
   // RF-30 (T-052): filtros activos — null significa "sin ese filtro".
   int? _filtroNivel;
   int? get filtroNivel => _filtroNivel;
@@ -54,7 +59,10 @@ class DetalleAlumnoController extends ChangeNotifier {
   int? get filtroSemestre => _filtroSemestre;
 
   Future<void> cargarInicial() async {
+    final generacion = ++_generacion;
     _cargando = true;
+    // Una cargarMas() en vuelo quedó obsoleta con este reinicio.
+    _cargandoMas = false;
     _error = null;
     notifyListeners();
     try {
@@ -68,20 +76,24 @@ class DetalleAlumnoController extends ChangeNotifier {
         carrera: _filtroCarrera,
         semestre: _filtroSemestre,
       );
+      if (generacion != _generacion) return;
       _niveles = niveles;
       _intentos = detalle.intentos;
       _pagina = detalle.pagina;
       _totalPaginas = detalle.totalPaginas;
     } on ApiException catch (e) {
-      _error = e.message;
+      if (generacion == _generacion) _error = e.message;
     } finally {
-      _cargando = false;
-      notifyListeners();
+      if (generacion == _generacion) {
+        _cargando = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> cargarMas() async {
     if (!hayMasPaginas || _cargandoMas) return;
+    final generacion = _generacion;
     _cargandoMas = true;
     notifyListeners();
     try {
@@ -94,12 +106,19 @@ class DetalleAlumnoController extends ChangeNotifier {
         carrera: _filtroCarrera,
         semestre: _filtroSemestre,
       );
+      if (generacion != _generacion) return;
       _intentos = [..._intentos, ...detalle.intentos];
       _pagina = detalle.pagina;
       _totalPaginas = detalle.totalPaginas;
+    } catch (_) {
+      // Un fallo de una página ya obsoleta no se propaga (ver
+      // SeguimientoAlumnosController.cargarMas()).
+      if (generacion == _generacion) rethrow;
     } finally {
-      _cargandoMas = false;
-      notifyListeners();
+      if (generacion == _generacion) {
+        _cargandoMas = false;
+        notifyListeners();
+      }
     }
   }
 

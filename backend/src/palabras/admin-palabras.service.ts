@@ -44,7 +44,9 @@ function errorAudioFormatoInvalido(): DominioException {
   );
 }
 
-function errorAudioTamanoInvalido(): DominioException {
+// Exportado para ArchivoDemasiadoGrandeFilter (T-071): el límite crudo de
+// multer debe responder con ESTE mismo error, no con su texto en inglés.
+export function errorAudioTamanoInvalido(): DominioException {
   return new DominioException(
     'AUDIO_TAMANO_INVALIDO',
     'El archivo no puede pesar más de 1 MB.',

@@ -236,6 +236,87 @@ void main() {
     );
   });
 
+  // T-071 (RNF-01): un cuerpo de error que NO cumple { error: { code, message } }
+  // — lo que mandaría un gateway o la forma por defecto de Nest — no debe
+  // reventar con un TypeError de Dart (la persona no veía ningún mensaje) ni
+  // dejar pasar su texto, que suele venir en inglés.
+  group('ApiClient._enviar() — cuerpos de error fuera del contrato (T-071)', () {
+    const mensajeGenerico = 'Ocurrió un error inesperado.';
+
+    Future<ApiException> fallar(int status, String cuerpo) async {
+      final cliente = ApiClient(
+        httpClient: _ClienteConRespuestaFija(status, cuerpo),
+      );
+      try {
+        await cliente.get('/algo');
+      } on ApiException catch (e) {
+        return e;
+      }
+      fail('Debió lanzar ApiException');
+    }
+
+    test(
+      'forma por defecto de Nest ("error" es una cadena): mensaje genérico en español, no el texto en inglés ni un TypeError',
+      () async {
+        final e = await fallar(
+          404,
+          '{"statusCode":404,"message":"Cannot GET /x","error":"Not Found"}',
+        );
+
+        expect(e.code, 'ERROR');
+        expect(e.message, mensajeGenerico);
+        expect(e.statusCode, 404);
+        expect(e.esBackendNoDisponible, isFalse);
+      },
+    );
+
+    test('la misma forma con un 5xx sigue contando como backend no disponible', () async {
+      final e = await fallar(
+        502,
+        '{"statusCode":502,"message":"Bad Gateway","error":"Bad Gateway"}',
+      );
+
+      expect(e.message, mensajeGenerico);
+      expect(e.statusCode, 502);
+      expect(e.esBackendNoDisponible, isTrue);
+    });
+
+    test('{"error": "texto"} sin más: no se muestra el texto ajeno', () async {
+      final e = await fallar(401, '{"error":"Unauthorized"}');
+
+      expect(e.message, mensajeGenerico);
+      expect(e.message, isNot(contains('Unauthorized')));
+    });
+
+    test('"code" o "message" que no son cadenas, o vacíos, caen a los valores por defecto', () async {
+      final e = await fallar(
+        400,
+        '{"error":{"code":42,"message":{"texto":"Bad request"}}}',
+      );
+      expect(e.code, 'ERROR');
+      expect(e.message, mensajeGenerico);
+
+      final vacio = await fallar(400, '{"error":{"code":"","message":""}}');
+      expect(vacio.code, 'ERROR');
+      expect(vacio.message, mensajeGenerico);
+    });
+
+    test('la raíz del cuerpo no es un objeto (arreglo, null, número): mensaje genérico', () async {
+      for (final cuerpo in ['[]', 'null', '7', '"Internal Server Error"']) {
+        final e = await fallar(500, cuerpo);
+        expect(e.message, mensajeGenerico, reason: 'cuerpo: $cuerpo');
+        expect(e.statusCode, 500);
+      }
+    });
+
+    test('con "code" válido y sin "message": conserva el code y usa el mensaje genérico', () async {
+      final e = await fallar(409, '{"error":{"code":"CONFLICTO"}}');
+
+      expect(e.code, 'CONFLICTO');
+      expect(e.message, mensajeGenerico);
+    });
+  });
+
   // RF-38 (T-065): "no tienes conexión" (el dispositivo no tiene red — lo que
   // el indicador de T-064 ya muestra) y "el servidor no responde" (hay red,
   // pero el backend está caído) llegan a ApiClient como la MISMA falla de

@@ -15,7 +15,7 @@
          rechaza cualquier url http:// con CleartextNotPermittedException.
          Quitar esto si el backend alguna vez sirve por HTTPS. -->
     <application
-        android:label="spelling_bee"
+        android:label="Spelling Bee"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

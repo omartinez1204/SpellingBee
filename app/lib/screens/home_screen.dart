@@ -86,11 +86,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 'Sesión iniciada como ${sesion.rol}.',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 4),
-              const Text(
-                'El catálogo y la práctica llegan en una fase posterior del backlog.',
-                textAlign: TextAlign.center,
-              ),
+              // T-071 (RNF-01): aquí había un texto de relleno de desarrollo
+              // ("...llegan en una fase posterior del backlog"): jerga que la
+              // persona usuaria no debe ver y, además, ya era falso — el
+              // catálogo y la práctica existen y tienen sus botones abajo.
               const SizedBox(height: 32),
               if (sesion.esProfesor) ...[
                 FilledButton(

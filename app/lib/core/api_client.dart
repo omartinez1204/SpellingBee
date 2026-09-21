@@ -211,11 +211,24 @@ class ApiClient {
 
     // Los errores siempre son { "error": { "code", "message" } } (un mapa),
     // sin importar si el endpoint exitoso regresa un mapa o una lista.
+    //
+    // T-071 (RNF-01): "siempre" vale para el backend propio, no para lo que
+    // haya en medio (un gateway, un proxy, la forma por defecto de Nest:
+    // { "statusCode": 404, "message": "Cannot GET /x", "error": "Not Found" },
+    // donde "error" es una CADENA). Un cast directo a Map lanzaba un
+    // TypeError de Dart que nadie capturaba: la persona no veía NINGÚN
+    // mensaje. Y el texto de un cuerpo ajeno al contrato suele estar en
+    // inglés, así que tampoco se muestra: se cae al mensaje genérico.
     final mapaError = cuerpo is Map<String, dynamic> ? cuerpo : null;
-    final error = mapaError?['error'] as Map<String, dynamic>?;
+    final errorCrudo = mapaError?['error'];
+    final error = errorCrudo is Map<String, dynamic> ? errorCrudo : null;
+    final code = error?['code'];
+    final message = error?['message'];
     throw ApiException(
-      (error?['code'] as String?) ?? 'ERROR',
-      (error?['message'] as String?) ?? 'Ocurrió un error inesperado.',
+      code is String && code.isNotEmpty ? code : 'ERROR',
+      message is String && message.isNotEmpty
+          ? message
+          : 'Ocurrió un error inesperado.',
       // RF-38 (T-065): se manda el status real sin importar qué "code" de
       // negocio haya elegido el backend — ApiException.esBackendNoDisponible
       // se apoya en esto (>=500), no en adivinar el string del code.

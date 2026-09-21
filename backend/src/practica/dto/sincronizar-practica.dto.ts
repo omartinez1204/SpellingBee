@@ -13,7 +13,12 @@ import { RegistroPracticaPendienteDto } from './registro-practica-pendiente.dto.
 export class SincronizarPracticaDto {
   @IsArray({ message: 'registros debe ser un arreglo.' })
   @ArrayNotEmpty({ message: 'registros no puede ser un arreglo vacío.' })
-  @ValidateNested({ each: true })
+  // T-071 (RNF-01): sin `message`, class-validator usa su texto en inglés
+  // ("each value in nested property registros must be either object or array").
+  @ValidateNested({
+    each: true,
+    message: 'Cada elemento de registros debe ser un objeto.',
+  })
   @Type(() => RegistroPracticaPendienteDto)
   registros!: RegistroPracticaPendienteDto[];
 }

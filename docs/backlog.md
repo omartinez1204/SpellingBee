@@ -69,8 +69,8 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 
 ## Fase 7 — No funcionales transversales
 
-- [ ] **T-070** Paginación en todos los listados que puedan superar 50 elementos (RNF-12).
-- [ ] **T-071** Revisión de que el 100% de los textos de interfaz están en español (RNF-01) — solo la palabra/oración léxica va en inglés.
+- [x] **T-070** Paginación en todos los listados que puedan superar 50 elementos (RNF-12).
+- [x] **T-071** Revisión de que el 100% de los textos de interfaz están en español (RNF-01) — solo la palabra/oración léxica va en inglés.
 - [ ] **T-072** Prueba de usabilidad guiada: un alumno completa su primera práctica sin ayuda externa (RNF-02).
 - [ ] **T-073** Documentar con TI de NovaUniversitas la política de respaldo del archivo SQLite (RNF-13) — tarea operativa, no de código.
 - [ ] **T-074** Aviso de privacidad: mostrar el texto en el registro (RF-37) — el contenido definitivo lo redacta el área jurídica de NovaUniversitas (RNF-11); mientras tanto usar un texto provisional claramente marcado como borrador.

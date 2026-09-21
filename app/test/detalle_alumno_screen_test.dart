@@ -6,8 +6,11 @@ import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/admin_alumnos_service.dart';
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/detalle_alumno_controller.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/core/niveles_service.dart';
 import 'package:spelling_bee/screens/detalle_alumno_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 // Simula lo mínimo de GET /niveles y GET /admin/alumnos/:id (T-051, RF-29),
 // con los filtros de T-052 (RF-30). Cada intento de prueba trae "id_nivel"
@@ -170,8 +173,15 @@ DetalleAlumnoController _controladorDePrueba(http.Client cliente) {
   );
 }
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 void main() {
   testWidgets(
@@ -207,6 +217,12 @@ void main() {
       expect(find.text('This is my business sentence.'), findsOneWidget);
       // 75s = 01:15 (RF-18, mismo formato mm:ss ya usado en toda la app).
       expect(find.text('01:15'), findsOneWidget);
+      // T-071 (RNF-01): lo único en inglés son la palabra y la oración.
+      await expectSoloEspanol(
+        tester,
+        contenidoIngles: ['business', 'This is my business sentence.'],
+        pantalla: 'detalle de alumno con intentos',
+      );
     },
   );
 
@@ -266,6 +282,7 @@ void main() {
         ),
         findsOneWidget,
       );
+      await expectSoloEspanol(tester, pantalla: 'detalle de alumno sin intentos');
     },
   );
 
@@ -294,6 +311,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
+    await expectSoloEspanol(tester, pantalla: 'detalle de alumno con error de carga');
 
     await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
     await tester.pumpAndSettle();

@@ -7,9 +7,12 @@ import 'package:http/http.dart' as http;
 import 'package:spelling_bee/core/admin_alumnos_service.dart';
 import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/auth_controller.dart';
+import 'package:spelling_bee/core/localizacion.dart';
 import 'package:spelling_bee/core/niveles_service.dart';
 import 'package:spelling_bee/core/seguimiento_alumnos_controller.dart';
 import 'package:spelling_bee/screens/seguimiento_alumnos_screen.dart';
+
+import 'helpers/textos_espanol.dart';
 
 // Mismo patrón que admin_catalogo_screen_test.dart.
 class _AlmacenDePruebaEnMemoria extends FlutterSecureStorage {
@@ -274,8 +277,15 @@ Map<String, dynamic> _alumno({
   };
 }
 
-Widget _envolver(Widget child) =>
-    MaterialApp(home: child, debugShowCheckedModeBanner: false);
+// T-071: misma localización que la app real (core/localizacion.dart), para que
+// los textos que pone el propio Flutter también salgan en español aquí.
+Widget _envolver(Widget child) => MaterialApp(
+  locale: localeDeLaInterfaz,
+  supportedLocales: localesSoportados,
+  localizationsDelegates: delegadosDeLocalizacion,
+  home: child,
+  debugShowCheckedModeBanner: false,
+);
 
 void main() {
   testWidgets(
@@ -294,6 +304,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(CircularProgressIndicator), findsNothing);
+      // T-071 (RNF-01): ningún texto visible ni anunciado en inglés.
+      await expectSoloEspanol(tester, pantalla: 'seguimiento (aviso solo profesores)');
     },
   );
 
@@ -335,6 +347,7 @@ void main() {
       expect(find.text('Fácil: 3'), findsOneWidget);
       expect(find.text('Intermedio: 1'), findsOneWidget);
       expect(find.text('Difícil: 0'), findsOneWidget);
+      await expectSoloEspanol(tester, pantalla: 'seguimiento con alumnos');
     },
   );
 
@@ -355,6 +368,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Todavía no hay alumnos registrados.'), findsOneWidget);
+    await expectSoloEspanol(tester, pantalla: 'seguimiento sin alumnos');
   });
 
   testWidgets('si falla la carga inicial, muestra el error y permite reintentar', (
@@ -381,6 +395,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(FilledButton, 'Reintentar'), findsOneWidget);
+    await expectSoloEspanol(tester, pantalla: 'seguimiento con error de carga');
 
     await tester.tap(find.widgetWithText(FilledButton, 'Reintentar'));
     await tester.pumpAndSettle();

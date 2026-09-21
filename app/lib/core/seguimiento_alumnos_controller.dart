@@ -52,6 +52,14 @@ class SeguimientoAlumnosController extends ChangeNotifier {
   int _totalPaginas = 1;
   bool get hayMasPaginas => _pagina < _totalPaginas;
 
+  // T-070 (RNF-12): número de "reinicio" de la lista — sube cada vez que
+  // cargarInicial() (y por tanto aplicarFiltros()) empieza. Una respuesta
+  // que llega tras un reinicio pertenece a los filtros/lista VIEJOS y se
+  // descarta: sin esto, una página lenta (o un cargarInicial() anterior) que
+  // resuelve después de cambiar los filtros se sumaría o pisaría la lista
+  // nueva, mostrando alumnos que no cumplen el filtro visible.
+  int _generacion = 0;
+
   // RF-30 (T-052): filtros activos — null significa "sin ese filtro".
   int? _filtroNivel;
   int? get filtroNivel => _filtroNivel;
@@ -61,7 +69,11 @@ class SeguimientoAlumnosController extends ChangeNotifier {
   int? get filtroSemestre => _filtroSemestre;
 
   Future<void> cargarInicial() async {
+    final generacion = ++_generacion;
     _cargando = true;
+    // Una cargarMas() en vuelo quedó obsoleta con este reinicio: su bandera
+    // ya no debe impedir cargar la página 2 de la lista NUEVA.
+    _cargandoMas = false;
     _error = null;
     notifyListeners();
     try {
@@ -74,20 +86,24 @@ class SeguimientoAlumnosController extends ChangeNotifier {
         carrera: _filtroCarrera,
         semestre: _filtroSemestre,
       );
+      if (generacion != _generacion) return;
       _niveles = niveles;
       _alumnos = lista.alumnos;
       _pagina = lista.pagina;
       _totalPaginas = lista.totalPaginas;
     } on ApiException catch (e) {
-      _error = e.message;
+      if (generacion == _generacion) _error = e.message;
     } finally {
-      _cargando = false;
-      notifyListeners();
+      if (generacion == _generacion) {
+        _cargando = false;
+        notifyListeners();
+      }
     }
   }
 
   Future<void> cargarMas() async {
     if (!hayMasPaginas || _cargandoMas) return;
+    final generacion = _generacion;
     _cargandoMas = true;
     notifyListeners();
     try {
@@ -99,12 +115,19 @@ class SeguimientoAlumnosController extends ChangeNotifier {
         carrera: _filtroCarrera,
         semestre: _filtroSemestre,
       );
+      if (generacion != _generacion) return;
       _alumnos = [..._alumnos, ...lista.alumnos];
       _pagina = lista.pagina;
       _totalPaginas = lista.totalPaginas;
+    } catch (_) {
+      // Un fallo de una página ya obsoleta no le importa a quien está viendo
+      // la lista nueva: no se propaga para no mostrar un error ajeno.
+      if (generacion == _generacion) rethrow;
     } finally {
-      _cargandoMas = false;
-      notifyListeners();
+      if (generacion == _generacion) {
+        _cargandoMas = false;
+        notifyListeners();
+      }
     }
   }
 
