@@ -2,22 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../core/api_exception.dart';
 import '../core/auth_controller.dart';
+import '../core/aviso_privacidad.dart';
 import '../core/carreras.dart';
 import '../widgets/campo_contrasena.dart';
 import '../widgets/error_backend_banner.dart';
-
-// T-074 / RF-37: texto PROVISIONAL. El contenido definitivo lo redacta el
-// área jurídica de NovaUniversitas (RNF-11) — no es un aviso de privacidad
-// real todavía, y no debe tratarse como tal.
-const _avisoPrivacidadBorrador =
-    'BORRADOR — pendiente de revisión por el área jurídica de NovaUniversitas.\n\n'
-    'NovaUniversitas recaba tu matrícula, nombre completo, carrera, semestre y '
-    'correo electrónico para crear tu cuenta en Spelling Bee y darte acceso a '
-    'las actividades de práctica de inglés. También se registra tu progreso '
-    '(tiempos, resultados de deletreo y oraciones) para que tus profesores '
-    'puedan dar seguimiento académico. Tus datos no se comparten con '
-    'terceros ajenos a la universidad.\n\n'
-    'Este texto es un borrador de trabajo, no el aviso de privacidad oficial.';
 
 class RegistroScreen extends StatefulWidget {
   const RegistroScreen({super.key, required this.authController});
@@ -54,6 +42,16 @@ class _RegistroScreenState extends State<RegistroScreen> {
   }
 
   Future<void> _registrar() async {
+    // RF-37: sin aceptar el aviso no se crea la cuenta, salga la llamada de
+    // donde salga. El botón ya está deshabilitado sin la casilla, pero
+    // "Reintentar" (banner de RF-38) vuelve a llamar aquí sin pasar por él:
+    // con el banner todavía en pantalla se puede desmarcar la casilla.
+    if (!_acepteAviso) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Debes aceptar el aviso de privacidad.')),
+      );
+      return;
+    }
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _enviando = true);
@@ -67,6 +65,7 @@ class _RegistroScreenState extends State<RegistroScreen> {
         semestre: _semestre!,
         correo: _correoController.text.trim(),
         contrasena: _contrasenaController.text,
+        aceptoAvisoPrivacidad: _acepteAviso,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -268,6 +267,7 @@ class _AvisoPrivacidad extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
+          key: const Key('aviso-privacidad'),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             border: Border.all(color: Theme.of(context).colorScheme.outline),
@@ -295,9 +295,23 @@ class _AvisoPrivacidad extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
+              // Encabezado de advertencia (T-074): EXACTO, encima del texto
+              // legal y dentro de la misma tarjeta, para que no se lea el
+              // aviso sin ver que es un borrador pendiente de jurídica.
               Text(
-                _avisoPrivacidadBorrador,
-                style: Theme.of(context).textTheme.bodySmall,
+                avisoPrivacidadEncabezado,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Íntegro, sin maxLines ni overflow: es texto legal y tiene que
+              // poder leerse completo (RF-37). Letra de cuerpo (14 sp), no la
+              // pequeña (12 sp) que tenía el borrador anterior.
+              Text(
+                avisoPrivacidadTexto,
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
             ],
           ),

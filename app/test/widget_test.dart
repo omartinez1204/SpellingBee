@@ -46,7 +46,17 @@ void main() {
 
     expect(find.byType(RegistroScreen), findsOneWidget);
     // RF-37 / T-074: el aviso de privacidad debe verse en el registro, y
-    // marcado con claridad como borrador.
-    expect(find.textContaining('BORRADOR'), findsOneWidget);
+    // marcado con claridad como borrador (el encabezado y la advertencia que
+    // trae el propio texto). El texto exacto y su legibilidad se prueban a
+    // fondo en registro_screen_test.dart.
+    expect(find.text('Aviso de privacidad (borrador)'), findsOneWidget);
+    expect(
+      find.text('BORRADOR — PENDIENTE DE VALIDACIÓN JURÍDICA'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Este texto es un borrador temporal de trabajo.'),
+      findsOneWidget,
+    );
   });
 }

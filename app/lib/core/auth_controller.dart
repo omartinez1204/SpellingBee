@@ -56,6 +56,11 @@ class AuthController extends ChangeNotifier {
 
   // RF-01, RF-37 (T-010). No inicia sesión sola: el backend no emite JWT en
   // el registro, hay que loguearse después.
+  //
+  // [aceptoAvisoPrivacidad] es lo que marcó la persona en la casilla (T-074):
+  // se manda tal cual y el backend (T-010) rechaza un false. Antes iba fijo en
+  // true, así que la casilla y lo que se mandaba solo coincidían mientras el
+  // botón siguiera deshabilitado.
   Future<void> registrar({
     required String matricula,
     required String nombre,
@@ -65,6 +70,7 @@ class AuthController extends ChangeNotifier {
     required int semestre,
     required String correo,
     required String contrasena,
+    required bool aceptoAvisoPrivacidad,
   }) {
     return _api.post('/auth/registro', {
       'matricula': matricula,
@@ -75,7 +81,7 @@ class AuthController extends ChangeNotifier {
       'semestre': semestre,
       'correo': correo,
       'contrasena': contrasena,
-      'acepto_aviso_privacidad': true,
+      'acepto_aviso_privacidad': aceptoAvisoPrivacidad,
     });
   }
 

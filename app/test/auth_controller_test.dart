@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:spelling_bee/core/api_client.dart';
 import 'package:spelling_bee/core/auth_controller.dart';
 
 // Sin plugin real: sobreescribe justo lo que AuthController usa, para poder
@@ -123,5 +126,40 @@ void main() {
 
     expect(await storage.read(key: 'debe_cambiar_contrasena_resuelto'), isNull);
     expect(await storage.read(key: 'jwt_token'), isNull);
+  });
+
+  // T-074 (RF-37): antes, registrar() mandaba acepto_aviso_privacidad: true
+  // fijo, sin importar la casilla. El valor que se manda debe ser el que
+  // recibe — así la casilla de la pantalla y lo que valida el backend (T-010)
+  // son lo mismo, no dos cosas que solo coinciden mientras el botón siga
+  // deshabilitado.
+  test('registrar manda acepto_aviso_privacidad tal como se le pasa (no está fijo en true)', () async {
+    final cuerpos = <Map<String, dynamic>>[];
+    final auth = AuthController(
+      apiClient: ApiClient(
+        httpClient: MockClient((peticion) async {
+          cuerpos.add(jsonDecode(peticion.body) as Map<String, dynamic>);
+          return http.Response('{}', 201, headers: {'content-type': 'application/json'});
+        }),
+      ),
+    );
+
+    Future<void> registrar({required bool acepta}) => auth.registrar(
+      matricula: '2024001',
+      nombre: 'Ada',
+      apellidoPaterno: 'Lovelace',
+      apellidoMaterno: 'Byron',
+      carrera: 'Ingeniería en Desarrollo de Software',
+      semestre: 3,
+      correo: 'ada@example.com',
+      contrasena: 'ClaveSegura123',
+      aceptoAvisoPrivacidad: acepta,
+    );
+
+    await registrar(acepta: false);
+    await registrar(acepta: true);
+
+    expect(cuerpos[0]['acepto_aviso_privacidad'], isFalse);
+    expect(cuerpos[1]['acepto_aviso_privacidad'], isTrue);
   });
 }
