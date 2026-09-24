@@ -72,7 +72,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 - [x] **T-070** Paginación en todos los listados que puedan superar 50 elementos (RNF-12).
 - [x] **T-071** Revisión de que el 100% de los textos de interfaz están en español (RNF-01) — solo la palabra/oración léxica va en inglés.
 - [ ] **T-072** Prueba de usabilidad guiada: un alumno completa su primera práctica sin ayuda externa (RNF-02).
-- [ ] **T-073** Documentar con TI de NovaUniversitas la política de respaldo del archivo SQLite (RNF-13) — tarea operativa, no de código.
+- [x] **T-073** Política de respaldo del archivo SQLite (RNF-13): documentada en `docs/operacion.md` según lo indicado por el equipo en la sesión de trabajo del 2026-09-22 (semanal cada fin de semana; backend y base de datos en el mismo servidor; ejecutado y verificado por el equipo de desarrollo). A diferencia de como se planteó originalmente ("tarea operativa, no de código"), también se agregó código: `backend/scripts/respaldar-bd.mjs` (Online Backup API de SQLite, no copia de archivo directa, por el modo WAL) y su prueba `backend/scripts/respaldar-bd.spec.ts`. **Pendiente, no resuelto en esta tarea:** procedimiento de restauración (ni definido ni probado). La programación automática (cron) no se implementó: no se automatiza mientras no haya un servidor de producción activo.
 - [ ] **T-074** Aviso de privacidad: mostrar el texto en el registro (RF-37) — el contenido definitivo lo redacta el área jurídica de NovaUniversitas (RNF-11); mientras tanto usar un texto provisional claramente marcado como borrador.
 
 ## Bloqueadores heredados del ERS (no resolverlos por cuenta propia — preguntar)
@@ -80,7 +80,7 @@ Convención de checklist: `[ ]` pendiente, `[x]` hecho. Marcar la casilla es par
 Estos puntos, ya señalados en el ERS §8.2, detienen o limitan ciertas tareas de este backlog. Si Claude Code llega a una de ellas, debe señalarlo en vez de asumir una respuesta, siguiendo la instrucción permanente del cliente ("no asumas nada, pregúntame"):
 
 - **T-003 / contenido del catálogo**: faltan significado, oración y audio de las 45 palabras — sin esto, ninguna palabra puede llegar a `completa=true` y por tanto ninguna es visible para un alumno real (RF-06, RF-08).
-- **Servidor, dominio y política de respaldo (T-073)**: dependen de TI de NovaUniversitas.
+- **Servidor y dominio**: dependen de TI de NovaUniversitas (a diferencia de la política de respaldo, T-073, ya documentada en `docs/operacion.md` — ver ahí mismo qué de esa tarea sigue sin resolverse).
 - **Fecha límite del proyecto**: no definida en el ERS.
 - **Texto legal del aviso de privacidad (T-074)**: pendiente de validación jurídica.
 - **RF-07 (diseño de pistas "Ver significado"/"Ver ejemplo")**: es una propuesta del equipo de desarrollo, no una instrucción literal del cliente — confirmar antes de darla por definitiva si el cliente la revisa.

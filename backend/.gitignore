@@ -26,6 +26,11 @@ coverage/
 /assets/audios/*
 !/assets/audios/.gitkeep
 
+# Respaldos generados por scripts/respaldar-bd.mjs (T-073, RNF-13) — copias
+# de la base de datos real, no código; ver docs/operacion.md.
+/backups/*
+!/backups/.gitkeep
+
 # Logs
 *.log
 npm-debug.log*
